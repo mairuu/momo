@@ -114,6 +114,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | The game exports `GAME_STATE_VERSION` (bumped by hand) and `sizeof(GameState)`. If either changes, the engine zeros game memory, calls `init` again, and logs it. | Code-only edits keep running. A layout change costs a stage restart instead of a crash. |
 | Engine module state lives inside each module (`renderer::draw_sprite(s, pos)`, with no context passed in) | There's only one window, GPU and audio device. The engine never reloads, so its internal state is safe. |
 | Game state hangs off the `GameState*` the engine passes in | Rules in §3.2. |
+| *Added in ch02:* `engine/momo.h` is the whole boundary: the engine functions marked `MOMO_API`, the `GameApi` struct, and the game's one export, `extern "C" momo_game_api()`. Both shared libraries are compiled with `-fvisibility=hidden`. `GameApi` has `init`, `update` and `shutdown` so far; `render` joins it when there's something to draw. | Everything one binary can call in another is listed in one header, and nothing unmarked leaks out. `extern "C"` keeps the export's name unmangled, so `dlsym` can find it. |
+| *Added in ch02:* The engine loads `game.so` from the executable's folder (found through `/proc/self/exe`) with `dlopen(RTLD_NOW)`. `momo` and `game.so` find `libmomo.so` through a RUNPATH of `$ORIGIN`. | A build folder runs from anywhere, with no install step and no `LD_LIBRARY_PATH`. `RTLD_NOW` reports a missing engine function when the game loads, not in the middle of a frame. |
 
 ### 4.2 Memory
 
@@ -224,6 +226,9 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | GNU Make. `make` builds the debug build (`-O0 -g3`, AddressSanitizer + UndefinedBehaviorSanitizer, asserts on). `make release` uses `-O2 -g` with asserts still on. Both support hot reload. No static shipping build. | Separate compilation and linking stay visible. The sanitizers catch exactly the bugs C-style code invites. |
 | `libmomo.so` is built with `-fPIC` and an export macro | Required by §4.1. |
 | *Added in ch01:* warnings are `-Wall -Wextra -Wno-missing-field-initializers` | In C++, GCC's `-Wmissing-field-initializers` (part of `-Wextra`) warns when a designated initializer leaves fields out, and leaving them out is how ZII code is written. GCC doesn't warn about that in C. |
+| *Added in ch02:* Each build has its own folder, `build/debug/` or `build/release/`, holding `momo`, `libmomo.so`, `game.so` and `obj/`. `make release` runs `make CONFIG=release`. `-MMD -MP` track header dependencies, and every rule also depends on the Makefile. | Both builds exist side by side. Editing a header or a flag rebuilds exactly what it affects. |
+| *Added in ch02:* Shared libraries link with `-Wl,--no-undefined` | Calling an engine function that isn't exported fails at link time instead of when `game.so` loads. |
+| *Added in ch02:* Every build writes `compile_commands.json` at the repo root, from the same variables the build uses. Git ignores it, and clangd's `.cache/` too. | Editors (you use clangd) compile each file with the build's exact flags. It holds absolute paths, so it's generated, not committed. |
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
@@ -251,11 +256,11 @@ Each folder is created in the chapter that first needs it.
 **A. Foundations (terminal only)**
 - 00 Preface
 - 01 The Dialect: the Orthodox rules, `base.h` (types, `ASSERT`, macros)
-- 02 Three Binaries: host, `libmomo.so`, `game.so`, and the Makefile
+- 02 Three Binaries: host, `libmomo.so`, `game.so`, and the Makefile. *Changed in ch02:* also loads `game.so` once with `dlopen` through the game API struct, and generates `compile_commands.json`.
 - 03 A Test Runner: `make test` in about 50 lines
 - 04 Arenas: permanent, stage and frame on `mmap`, zeroed, with overflow asserts
 - 05 Strings and Logging: `Str`, `str_fmt`, `log::info`
-- 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check
+- 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap.
 
 **B. Window and clock**
 - 07 Platform Layer: an SDL3 window behind `platform::`
@@ -322,3 +327,5 @@ Anything here can move into scope later through a chapter. If it does, it gets l
 |---|---|---|
 | ch00 | Plan written from the design session on 2026-10-08 | Starting point. |
 | ch01 | Added dialect details: `= {}` and designated initializers, C-style casts, how `ASSERT` stops, `i32` counts and `i64` sizes, `UPPER_SNAKE` constants, `-Wno-missing-field-initializers` | Writing `base.h` and its test program needed them, and the plan didn't cover them yet. |
+| ch02 | Moved loading `game.so` with `dlopen` and the `GameApi` struct from chapter 06 to chapter 02 | A `game.so` that nothing loads would prove nothing. Chapter 06 keeps the reloading itself. |
+| ch02 | Added the boundary and build details: `momo.h`, `-fvisibility=hidden`, `extern "C"`, `RTLD_NOW`, `$ORIGIN`, `--no-undefined`, the build folder layout, `compile_commands.json` | The Makefile and the first engine code needed them. You asked for `compile_commands.json` so clangd works. |
