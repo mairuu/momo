@@ -54,6 +54,8 @@ The test for any feature: *can I tell what this line does by reading only this l
 | Memory from arenas and fixed pools. No `new` / `delete` in game code, no smart pointers. | Lifetimes are grouped and obvious. Hot reload also requires it (§3.2). |
 | Pointers for anything a function modifies (`f(&x)`). Values or const references for read-only inputs. | You can see a mutation where the function is called. |
 | No capturing lambdas. `auto` only where the type is obvious from the right-hand side. | Both hide types or state. |
+| *Added in ch01:* structs are created with `= {}` or a designated initializer, `{ .kind = ENTITY_BAT, .hp = 1 }`. Fields left out are zero. | A local struct with no initializer holds garbage. A designated initializer names only what isn't zero, which is ZII written down. |
+| *Added in ch01:* C-style casts, `(i32)x` | Short, and the resulting type is on the line. |
 
 ### 3.2 Rules for game code, required by hot reload
 
@@ -76,6 +78,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Expected failures (a missing file, a shader that won't compile) return `bool` or null and log the reason | They're normal events, not bugs. No `Result<T>`, no error-code hierarchy. |
 | `Str` = pointer plus length, not owning its memory. Strings are built in arenas with `str_fmt(arena, ...)`. | No hidden allocation, and the lifetime is the arena's. |
 | Game state stores enums and IDs, never strings | Avoids the dangling string-literal problem from §3.2. |
+| *Added in ch01:* `ASSERT` is on in every build. It prints `file:line: ASSERT(cond) failed` and runs a trap instruction (`__builtin_trap`). | gdb stops inside the function that failed, not five frames deep in libc as with `assert()`. The message uses the compiler's error format, so editors can jump to it. |
 
 ### 3.4 Names and types
 
@@ -84,6 +87,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 - Plain `enum`s with a fixed underlying type and prefixed values: `enum EntityKind : u8 { ENTITY_PLAYER, ENTITY_BAT };`. They index tables without casts.
 - Base types are `i8`…`i64`, `u8`…`u64`, `f32`, `f64`. **Counts and indices are signed**, so `i - 1` on an empty list gives `-1`, which an assert catches, instead of 4 billion.
 - Each module is a `.h` + `.cpp` pair with `#pragma once`.
+- *Added in ch01:* counts and indices are `i32`, and byte sizes are `i64`. Unsigned types are only for bits, flags and formats defined outside momo (files, pixels, GPU data).
+- *Added in ch01:* constants are `constexpr` and `UPPER_SNAKE`, like macros and enum values.
 
 ## 4. Engine
 
@@ -218,6 +223,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 |---|---|
 | GNU Make. `make` builds the debug build (`-O0 -g3`, AddressSanitizer + UndefinedBehaviorSanitizer, asserts on). `make release` uses `-O2 -g` with asserts still on. Both support hot reload. No static shipping build. | Separate compilation and linking stay visible. The sanitizers catch exactly the bugs C-style code invites. |
 | `libmomo.so` is built with `-fPIC` and an export macro | Required by §4.1. |
+| *Added in ch01:* warnings are `-Wall -Wextra -Wno-missing-field-initializers` | In C++, GCC's `-Wmissing-field-initializers` (part of `-Wextra`) warns when a designated initializer leaves fields out, and leaving them out is how ZII code is written. GCC doesn't warn about that in C. |
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
@@ -315,3 +321,4 @@ Anything here can move into scope later through a chapter. If it does, it gets l
 | Chapter | Change | Why |
 |---|---|---|
 | ch00 | Plan written from the design session on 2026-10-08 | Starting point. |
+| ch01 | Added dialect details: `= {}` and designated initializers, C-style casts, how `ASSERT` stops, `i32` counts and `i64` sizes, `UPPER_SNAKE` constants, `-Wno-missing-field-initializers` | Writing `base.h` and its test program needed them, and the plan didn't cover them yet. |
