@@ -56,6 +56,7 @@ The test for any feature: *can I tell what this line does by reading only this l
 | No capturing lambdas. `auto` only where the type is obvious from the right-hand side. | Both hide types or state. |
 | *Added in ch01:* structs are created with `= {}` or a designated initializer, `{ .kind = ENTITY_BAT, .hp = 1 }`. Fields left out are zero. | A local struct with no initializer holds garbage. A designated initializer names only what isn't zero, which is ZII written down. |
 | *Added in ch01:* C-style casts, `(i32)x` | Short, and the resulting type is on the line. |
+| *Added in ch03:* `min`, `max` and `clamp` are templates in `base.h`, with one `T` for every argument. `clamp` asserts `lo <= hi`. | A macro evaluates an argument twice (`MIN(i++, j)`), and a function per type multiplies names. With one `T`, mixing types (`min(i64, int)`) is a compile error instead of a silent conversion. |
 
 ### 3.2 Rules for game code, required by hot reload
 
@@ -196,6 +197,10 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Random numbers come from a generator whose state is in `GameState`, never `rand()` | Replays stay deterministic. |
 | Dear ImGui only in Part II, and only if it proves necessary | Hot reload already makes tuning numbers in code fast. |
 | A tiny test runner we write ourselves (`make test`) for pure logic: math, fixed-point, containers, collision | Those bugs are much easier to find in a test than at 60 fps. Test frameworks are heavy on templates. |
+| *Added in ch03:* Each `tests/<name>_test.cpp` is its own program. Its tests are `static` functions, and its `main` runs each one with `RUN(name)`. The runner is `tests/test.h` + `tests/test.cpp`. | No self-registering tests, which would run code before `main` (§3.1). A test missing from `main` is an unused `static` function, which `-Wall` warns about. A crash stops one program, not every test. |
+| *Added in ch03:* `CHECK(cond)` and `CHECK_EQ(a, b)` (integers, printed on failure) print `file:line`, mark the test failed and return from it. The runner then runs the next test. The test's name is printed and flushed before it runs. | One run reports every failing test. If a test crashes, its name is already on screen. `break test::fail` in gdb stops at any failed check. |
+| *Added in ch03:* Test programs link the engine as a static archive, `build/<config>/obj/libmomo.a`, built from the same object files as `libmomo.so` | A test gets only the engine object files it uses, so the arena test won't need SDL, and it can call functions that aren't `MOMO_API`. |
+| *Added in ch03:* `make test` runs every test program, then fails if any of them failed. It uses the debug build (sanitizers on) unless given `CONFIG=release`. A program given a word runs only the tests whose names contain it. | Every failure shows up in one run, and tests catch memory bugs and UB, not only wrong answers. |
 
 ## 5. Game
 
@@ -229,6 +234,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch02:* Each build has its own folder, `build/debug/` or `build/release/`, holding `momo`, `libmomo.so`, `game.so` and `obj/`. `make release` runs `make CONFIG=release`. `-MMD -MP` track header dependencies, and every rule also depends on the Makefile. | Both builds exist side by side. Editing a header or a flag rebuilds exactly what it affects. |
 | *Added in ch02:* Shared libraries link with `-Wl,--no-undefined` | Calling an engine function that isn't exported fails at link time instead of when `game.so` loads. |
 | *Added in ch02:* Every build writes `compile_commands.json` at the repo root, from the same variables the build uses. Git ignores it, and clangd's `.cache/` too. | Editors (you use clangd) compile each file with the build's exact flags. It holds absolute paths, so it's generated, not committed. |
+| *Added in ch03:* The debug build adds `-fno-sanitize-recover=all` | UBSan otherwise prints a report and keeps going, so a test with undefined behavior could still pass. Bugs stop the program (§3.3), in the tests and in the game. |
+| *Added in ch03:* Test programs are built in `build/<config>/tests/`, compiled with plain `CXXFLAGS`, and listed in `compile_commands.json` | They're executables, like the host. |
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
@@ -257,7 +264,7 @@ Each folder is created in the chapter that first needs it.
 - 00 Preface
 - 01 The Dialect: the Orthodox rules, `base.h` (types, `ASSERT`, macros)
 - 02 Three Binaries: host, `libmomo.so`, `game.so`, and the Makefile. *Changed in ch02:* also loads `game.so` once with `dlopen` through the game API struct, and generates `compile_commands.json`.
-- 03 A Test Runner: `make test` in about 50 lines
+- 03 A Test Runner: `make test` in about 50 lines. *Changed in ch03:* about 90 lines, one program per test file, and `min`, `max` and `clamp` join `base.h` as the first code under test.
 - 04 Arenas: permanent, stage and frame on `mmap`, zeroed, with overflow asserts
 - 05 Strings and Logging: `Str`, `str_fmt`, `log::info`
 - 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap.
@@ -329,3 +336,6 @@ Anything here can move into scope later through a chapter. If it does, it gets l
 | ch01 | Added dialect details: `= {}` and designated initializers, C-style casts, how `ASSERT` stops, `i32` counts and `i64` sizes, `UPPER_SNAKE` constants, `-Wno-missing-field-initializers` | Writing `base.h` and its test program needed them, and the plan didn't cover them yet. |
 | ch02 | Moved loading `game.so` with `dlopen` and the `GameApi` struct from chapter 06 to chapter 02 | A `game.so` that nothing loads would prove nothing. Chapter 06 keeps the reloading itself. |
 | ch02 | Added the boundary and build details: `momo.h`, `-fvisibility=hidden`, `extern "C"`, `RTLD_NOW`, `$ORIGIN`, `--no-undefined`, the build folder layout, `compile_commands.json` | The Makefile and the first engine code needed them. You asked for `compile_commands.json` so clangd works. |
+| ch03 | Added the test runner's design: one program per test file, `RUN`/`CHECK`/`CHECK_EQ`, linking tests against `libmomo.a`, how `make test` runs them | Plan §4.10 only said "a tiny test runner". |
+| ch03 | The debug build now stops at the first sanitizer report (`-fno-sanitize-recover=all`) | Writing the tests showed that a test with signed overflow passed while UBSan only printed a warning. |
+| ch03 | Added `min`, `max` and `clamp` to `base.h` | The runner needed real code to test, and chapters 04, 09 and 23 need these functions. |

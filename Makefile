@@ -1,7 +1,8 @@
-# Makefile: builds momo's three binaries. Chapter 02 explains every line.
+# Makefile: builds momo and its tests. Chapters 02 and 03 explain every line.
 #
 #   make            debug build in build/debug/: no optimization, sanitizers
 #   make release    optimized build in build/release/
+#   make test       builds and runs the tests (chapter 03)
 #   make clean      deletes both builds
 #
 # ASSERT stays on in both builds. Every build also writes
@@ -18,8 +19,10 @@ CXX := g++
 CXXFLAGS := -std=c++20 -Wall -Wextra -Wno-missing-field-initializers \
             -fno-exceptions -fno-rtti -Iengine
 
+# -fno-sanitize-recover=all makes the sanitizers stop the program at the
+# first problem they find. UBSan would otherwise print a message and go on.
 ifeq ($(CONFIG),debug)
-    CXXFLAGS += -O0 -g3 -fsanitize=address,undefined
+    CXXFLAGS += -O0 -g3 -fsanitize=address,undefined -fno-sanitize-recover=all
     LDFLAGS  += -fsanitize=address,undefined
 else ifeq ($(CONFIG),release)
     CXXFLAGS += -O2 -g
@@ -53,6 +56,12 @@ ENGINE_OBJ := $(ENGINE_SRC:%.cpp=$(OUT)/obj/%.o)
 GAME_OBJ   := $(GAME_SRC:%.cpp=$(OUT)/obj/%.o)
 HOST_OBJ   := $(HOST_SRC:%.cpp=$(OUT)/obj/%.o)
 
+# tests/test.cpp is the runner. Every tests/<name>_test.cpp is a test program
+# of its own, built as build/<config>/tests/<name>_test.
+TESTS_SRC  := $(wildcard tests/*.cpp)
+TESTS_OBJ  := $(TESTS_SRC:%.cpp=$(OUT)/obj/%.o)
+TEST_PROGS := $(patsubst tests/%.cpp,$(OUT)/tests/%,$(wildcard tests/*_test.cpp))
+
 # ---- Targets ----------------------------------------------------------------
 
 all: $(OUT)/momo $(OUT)/libmomo.so $(OUT)/game.so compile_commands.json
@@ -63,7 +72,13 @@ release:
 clean:
 	rm -rf build/debug build/release compile_commands.json
 
-.PHONY: all release clean
+# Runs every test program, even after one fails, then fails if any did.
+test: $(TEST_PROGS) compile_commands.json
+	@failed=""; \
+	 for t in $(TEST_PROGS); do $$t || failed="$$failed $$t"; done; \
+	 if [ -n "$$failed" ]; then echo "failed:$$failed"; exit 1; fi
+
+.PHONY: all release clean test
 
 # ---- Linking ----------------------------------------------------------------
 
@@ -78,6 +93,23 @@ $(OUT)/game.so: $(GAME_OBJ) $(OUT)/libmomo.so Makefile
 
 $(OUT)/momo: $(HOST_OBJ) $(OUT)/libmomo.so Makefile
 	$(CXX) $(LDFLAGS) $(HOST_OBJ) $(LINK_MOMO) -o $@
+
+# The engine again, as a static library: an archive of the same object files
+# libmomo.so is linked from. Linking a program against an archive copies in
+# only the object files that define something the program calls. Every
+# function in them can be called, MOMO_API or not. It lives in obj/, so
+# -lmomo never finds it instead of libmomo.so.
+$(OUT)/obj/libmomo.a: $(ENGINE_OBJ) Makefile
+	rm -f $@
+	ar rcs $@ $(ENGINE_OBJ)
+
+# One rule for every test program: its own object file, the runner, and
+# whatever it uses from the engine. "targets: pattern: prerequisites" is a
+# static pattern rule: % stands for the same name on both sides, but only for
+# the targets listed before the first colon.
+$(TEST_PROGS): $(OUT)/tests/%: $(OUT)/obj/tests/%.o $(OUT)/obj/tests/test.o $(OUT)/obj/libmomo.a Makefile
+	@mkdir -p $(dir $@)
+	$(CXX) $(LDFLAGS) $< $(OUT)/obj/tests/test.o $(OUT)/obj/libmomo.a -o $@
 
 # ---- Compiling --------------------------------------------------------------
 
@@ -99,7 +131,11 @@ $(OUT)/obj/host/%.o: host/%.cpp Makefile
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
--include $(ENGINE_OBJ:.o=.d) $(GAME_OBJ:.o=.d) $(HOST_OBJ:.o=.d)
+$(OUT)/obj/tests/%.o: tests/%.cpp Makefile
+	@mkdir -p $(dir $@)
+	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
+
+-include $(ENGINE_OBJ:.o=.d) $(GAME_OBJ:.o=.d) $(HOST_OBJ:.o=.d) $(TESTS_OBJ:.o=.d)
 
 # ---- compile_commands.json --------------------------------------------------
 
@@ -113,8 +149,8 @@ compdb_entry = echo '{ "directory": "$(CURDIR)", "file": "$(1)", "command": "$(C
 
 # JSON allows no comma after the last entry, so sed adds a comma to the end of
 # every line except the last one ($!).
-compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC)
+compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC)
 	@{ echo '['; \
 	   { $(foreach f,$(ENGINE_SRC) $(GAME_SRC),$(call compdb_entry,$(f),$(LIB_CXXFLAGS))) \
-	     $(foreach f,$(HOST_SRC),$(call compdb_entry,$(f),$(CXXFLAGS))) } | sed '$$!s/$$/,/'; \
+	     $(foreach f,$(HOST_SRC) $(TESTS_SRC),$(call compdb_entry,$(f),$(CXXFLAGS))) } | sed '$$!s/$$/,/'; \
 	   echo ']'; } > $@

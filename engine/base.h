@@ -48,3 +48,33 @@ static_assert(sizeof(void*) == 8, "momo assumes a 64-bit platform");
 // The number of elements in a fixed-size array, as an i32. Passing a pointer
 // by mistake is caught by -Wsizeof-pointer-div, which -Wall turns on.
 #define ARRAY_COUNT(a) ((i32)(sizeof(a) / sizeof((a)[0])))
+
+// ---- Math -----------------------------------------------------------------
+
+// Templates, so they work on every number type and return the type they were
+// given. Both arguments must have the same type: with an i64 size,
+// min(size, 4096) doesn't compile, and min(size, (i64)4096) does. Chapter 03
+// explains why these aren't macros.
+template <typename T>
+T min(T a, T b)
+{
+    return a < b ? a : b;
+}
+
+template <typename T>
+T max(T a, T b)
+{
+    return a > b ? a : b;
+}
+
+// x, moved inside the range lo..hi (both ends included).
+template <typename T>
+T clamp(T x, T lo, T hi)
+{
+    ASSERT(lo <= hi);
+    if (x < lo)
+        return lo;
+    if (x > hi)
+        return hi;
+    return x;
+}
