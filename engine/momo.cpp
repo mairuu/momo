@@ -4,7 +4,6 @@
 
 #include <dlfcn.h>
 #include <limits.h>
-#include <string.h>
 #include <sys/mman.h>
 #include <unistd.h>
 
@@ -44,7 +43,7 @@ static bool init_memory()
     void* memory = mmap(nullptr, size, PROT_READ | PROT_WRITE,
                         MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (memory == MAP_FAILED) {
-        fprintf(stderr, "momo: can't reserve %lld MB of memory\n", (long long)(size / MB));
+        LOG_ERROR("can't reserve %lld MB of memory", size / MB);
         return false;
     }
     engine.memory = (u8*)memory;
@@ -57,21 +56,21 @@ static bool init_memory()
     next += STAGE_SIZE;
     arena::init(&engine.frame, next, FRAME_SIZE);
 
-    printf("momo: reserved %lld MB at %p\n", (long long)(size / MB), memory);
+    LOG_INFO("reserved %lld MB at %p", size / MB, memory);
     return true;
 }
 
-static void print_peak(const char* name, const Arena& arena)
+static void log_peak(const char* name, const Arena& arena)
 {
-    printf("momo: %-9s arena: at most %lld bytes used of %lld MB\n", name,
-           (long long)arena.peak, (long long)(arena.size / MB));
+    LOG_INFO("%-9s arena: at most %lld bytes used of %lld MB", name, arena.peak,
+             arena.size / MB);
 }
 
 static void shutdown_memory()
 {
-    print_peak("permanent", engine.permanent);
-    print_peak("stage", engine.stage);
-    print_peak("frame", engine.frame);
+    log_peak("permanent", engine.permanent);
+    log_peak("stage", engine.stage);
+    log_peak("frame", engine.frame);
     munmap(engine.memory, engine.memory_size);
 }
 
@@ -80,36 +79,38 @@ static void shutdown_memory()
 static bool load_game()
 {
     // /proc/self/exe is a link to the running executable, always as an
-    // absolute path. readlink doesn't add a terminating zero, which is why
-    // the buffer starts zeroed and readlink gets one byte less than its size.
-    char exe[PATH_MAX] = {};
-    if (readlink("/proc/self/exe", exe, sizeof(exe) - 1) < 0) {
-        fprintf(stderr, "momo: can't find the executable's path\n");
+    // absolute path. readlink returns the path's length and doesn't add a
+    // 0 after it, so the path is a Str: the buffer and that length.
+    char exe_buffer[PATH_MAX] = {};
+    i32 exe_len = (i32)readlink("/proc/self/exe", exe_buffer, sizeof(exe_buffer));
+    if (exe_len < 0) {
+        LOG_ERROR("can't find the executable's path");
         return false;
     }
-    *strrchr(exe, '/') = 0; // ".../build/debug/momo" becomes ".../build/debug"
+    Str exe = { .data = exe_buffer, .len = exe_len };
 
-    char path[PATH_MAX + 16] = {}; // room for the folder plus "/game.so"
-    snprintf(path, sizeof(path), "%s/game.so", exe);
+    // ".../build/debug/momo" -> ".../build/debug" -> ".../build/debug/game.so"
+    Str folder = str::slice(exe, 0, str::find_last(exe, '/'));
+    Str path = str::fmt(&engine.frame, "%.*s/game.so", folder.len, folder.data);
 
     // RTLD_NOW looks up every engine function game.so calls right here, so
     // a missing one fails now, with a message, instead of in the middle of
-    // a frame.
-    engine.game_lib = dlopen(path, RTLD_NOW);
+    // a frame. str::fmt put a 0 after path, so dlopen can take path.data.
+    engine.game_lib = dlopen(path.data, RTLD_NOW);
     if (!engine.game_lib) {
-        fprintf(stderr, "momo: %s\n", dlerror());
+        LOG_ERROR("%s", dlerror());
         return false;
     }
 
     auto* get_game_api = (GameApiFn*)dlsym(engine.game_lib, "momo_game_api");
     if (!get_game_api) {
-        fprintf(stderr, "momo: %s\n", dlerror());
+        LOG_ERROR("%s", dlerror());
         dlclose(engine.game_lib);
         return false;
     }
 
     engine.game = get_game_api();
-    printf("momo: loaded %s\n", path);
+    LOG_INFO("loaded %.*s", path.len, path.data);
     return true;
 }
 
@@ -131,7 +132,7 @@ i32 run()
     }
     engine.game.shutdown();
 
-    printf("momo: quit after %d frames\n", engine.frame_index);
+    LOG_INFO("quit after %d frames", engine.frame_index);
     dlclose(engine.game_lib);
     shutdown_memory();
     return 0;

@@ -10,19 +10,25 @@
 // Counts, indices and anything you do arithmetic on are signed: i32 for counts
 // and indices, i64 for byte sizes. Unsigned types are for bits, flags and
 // formats defined outside momo (files, pixels, GPU data).
+//
+// i64 and u64 are long long rather than int64_t, which is long on Linux and
+// long long on Windows. printf's %lld and %llu then match them on every
+// platform, and GCC's format check catches a %ld that would only be right on
+// Linux (chapter 05).
 using i8  = int8_t;
 using i16 = int16_t;
 using i32 = int32_t;
-using i64 = int64_t;
+using i64 = long long;
 
 using u8  = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
-using u64 = uint64_t;
+using u64 = unsigned long long;
 
 using f32 = float;
 using f64 = double;
 
+static_assert(sizeof(i64) == 8 && sizeof(u64) == 8, "i64 and u64 must be 64 bits");
 static_assert(sizeof(f32) == 4 && sizeof(f64) == 8, "f32 and f64 must be 32 and 64 bits");
 static_assert(sizeof(void*) == 8, "momo assumes a 64-bit platform");
 

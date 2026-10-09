@@ -67,7 +67,7 @@ void fail(const char* file, i32 line, const char* fmt, ...)
         if (check_a_ != check_b_) {                                           \
             test::fail(__FILE__, __LINE__,                                    \
                        "CHECK_EQ(%s, %s) failed: %lld != %lld", #a, #b,       \
-                       (long long)check_a_, (long long)check_b_);             \
+                       check_a_, check_b_);                                   \
             return;                                                           \
         }                                                                     \
     } while (0)

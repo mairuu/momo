@@ -1,34 +1,33 @@
 // game.cpp: the game. For now it only shows the engine calling the game, the
-// game calling the engine, and the game using the frame arena.
+// game calling the engine, and the game building text in the frame arena.
 #include "momo.h"
 
 namespace game {
 
 void init()
 {
-    printf("game: init\n");
+    LOG_INFO("init");
 }
 
 void update()
 {
     i32 frame = momo::frame_index();
+    Arena* frame_arena = momo::frame_arena();
 
-    // Memory that lasts until the end of this frame. The engine resets the
-    // frame arena before every update, so the game never frees anything.
-    i32 count = 100 * (frame + 1);
-    i32* numbers = arena::push_array<i32>(momo::frame_arena(), count);
-    for (i32 i = 0; i < count; i++)
-        numbers[i] = i;
+    // Text that lasts until the end of this frame, the way the debug
+    // overlay's will (chapter 13). str::fmt pushes exactly the bytes it
+    // needs from the frame arena, so nothing has to free them.
+    Str text = str::fmt(frame_arena, "frame %d: %d bats", frame, 50 * frame);
 
-    printf("game: update, frame %d: %d numbers at %p, frame arena has %lld bytes used\n",
-           frame, count, (void*)numbers, (long long)momo::frame_arena()->used);
+    LOG_INFO("\"%.*s\" is %d chars at %p, frame arena has %lld bytes used",
+             text.len, text.data, text.len, (void*)text.data, frame_arena->used);
     if (frame == 2)
         momo::quit();
 }
 
 void shutdown()
 {
-    printf("game: shutdown\n");
+    LOG_INFO("shutdown");
 }
 
 } // namespace game

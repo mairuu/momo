@@ -12,7 +12,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 02 Three Binaries: host, `libmomo.so`, `game.so`, and the Makefile. *Changed in ch02:* also loads `game.so` once with `dlopen` through the game API struct, and generates `compile_commands.json`.
 - 03 A Test Runner: `make test` in about 50 lines. *Changed in ch03:* about 90 lines, one program per test file, and `min`, `max` and `clamp` join `base.h` as the first code under test.
 - 04 Arenas: permanent, stage and frame on `mmap`, zeroed, with overflow asserts
-- 05 Strings and Logging: `Str`, `str_fmt`, `log::info`
+- 05 Strings and Logging: `Str`, `str_fmt`, `log::info`. *Changed in ch05:* `str::fmt`, and the log is the macros `LOG_INFO`, `LOG_WARN` and `LOG_ERROR`, since `log` can't be a namespace. `i64` also became `long long`.
 - 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap.
 
 **B. Window and clock**

@@ -80,9 +80,11 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 |---|---|
 | Bugs (a broken invariant, a bad index) hit `ASSERT`, which stops in gdb | A bug should stop the game where it happens. |
 | Expected failures (a missing file, a shader that won't compile) return `bool` or null and log the reason | They're normal events, not bugs. No `Result<T>`, no error-code hierarchy. |
-| `Str` = pointer plus length, not owning its memory. Strings are built in arenas with `str_fmt(arena, ...)`. | No hidden allocation, and the lifetime is the arena's. |
+| `Str` = pointer plus length, not owning its memory. Strings are built in arenas with `str_fmt(arena, ...)`. **Changed in ch05** (row below). | No hidden allocation, and the lifetime is the arena's. |
 | Game state stores enums and IDs, never strings | Avoids the dangling string-literal problem from §3.2. |
 | *Added in ch01:* `ASSERT` is on in every build. It prints `file:line` and traps. | gdb stops inside the function that failed, not deep in libc as with `assert()`, and editors can jump to the line. |
+| *Changed in ch05:* Strings are built with `str::fmt(arena, ...)`, which ends the text with a 0. A `Str` itself doesn't promise one, and its length is an `i32`. | The name follows §3.4. The 0 lets C functions take formatted text, which a slice can't give them. `%.*s` prints a `Str` and wants an `int` length. |
+| *Added in ch05:* Logging is three macros, `LOG_INFO`, `LOG_WARN` and `LOG_ERROR`, that write `file:line: message` lines to stderr. The function behind them is in `logger::`, since `log` is the C library's logarithm. | Each line names the code that logged it, in the format editors already jump to. stderr isn't buffered, so a crash loses nothing, and the log stays in order with `ASSERT`. |
 
 ### 3.4 Names and types
 
@@ -93,6 +95,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 - Each module is a `.h` + `.cpp` pair with `#pragma once`.
 - *Added in ch01:* counts and indices are `i32`, and byte sizes are `i64`. Unsigned types are only for bits, flags and formats defined outside momo (files, pixels, GPU data).
 - *Added in ch01:* constants are `constexpr` and `UPPER_SNAKE`, like macros and enum values.
+- *Added in ch05:* `i64` and `u64` are `long long` and `unsigned long long`, not `int64_t` and `uint64_t`, so `%lld` and `%llu` match them on every platform without casts.
 
 ## 4. Engine
 

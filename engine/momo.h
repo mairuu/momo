@@ -6,6 +6,8 @@
 
 #include "base.h"
 #include "arena.h"
+#include "logger.h"
+#include "str.h"
 
 // ---- The engine (libmomo.so) ------------------------------------------------
 
