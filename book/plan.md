@@ -2,7 +2,9 @@
 
 This file records every design decision behind momo and why it was made. Chapters link here when they rely on a decision.
 
-The book is append-only, and so is this plan. When a later chapter changes a decision, the original stays here, marked **changed in chNN**, and the change log at the bottom says why.
+Each entry is a decision and its reason, in a sentence or two. Details such as struct fields, function signatures, file paths and exact sizes belong in the code and in the chapter that introduced them.
+
+The book is append-only, and so is this plan. When a later chapter changes a decision, the original stays here, marked **changed in chNN**, and [changelog.md](changelog.md) says why.
 
 ---
 
@@ -56,8 +58,8 @@ The test for any feature: *can I tell what this line does by reading only this l
 | No capturing lambdas. `auto` only where the type is obvious from the right-hand side. | Both hide types or state. |
 | *Added in ch01:* structs are created with `= {}` or a designated initializer, `{ .kind = ENTITY_BAT, .hp = 1 }`. Fields left out are zero. | A local struct with no initializer holds garbage. A designated initializer names only what isn't zero, which is ZII written down. |
 | *Added in ch01:* C-style casts, `(i32)x` | Short, and the resulting type is on the line. |
-| *Added in ch03:* `min`, `max` and `clamp` are templates in `base.h`, with one `T` for every argument. `clamp` asserts `lo <= hi`. | A macro evaluates an argument twice (`MIN(i++, j)`), and a function per type multiplies names. With one `T`, mixing types (`min(i64, int)`) is a compile error instead of a silent conversion. |
-| *Added in ch04:* Typed arena pushes are templates too: `arena::push<T>` and `arena::push_array<T>` only fill in `sizeof(T)` and `alignof(T)` for `arena::push_bytes` and cast the result | The C alternative, a `PUSH_STRUCT(arena, T)` macro, does the same with worse error messages and no namespace. Nothing else about them is template machinery. |
+| *Added in ch03:* `min`, `max` and `clamp` are templates, with one `T` for every argument | A macro evaluates an argument twice, and a function per type multiplies names. With one `T`, mixing types is a compile error instead of a silent conversion. |
+| *Added in ch04:* Typed arena pushes (`arena::push<T>`) are templates too. They only fill in the size and alignment and cast the result. | A C macro would do the same with worse error messages and no namespace. |
 
 ### 3.2 Rules for game code, required by hot reload
 
@@ -80,7 +82,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Expected failures (a missing file, a shader that won't compile) return `bool` or null and log the reason | They're normal events, not bugs. No `Result<T>`, no error-code hierarchy. |
 | `Str` = pointer plus length, not owning its memory. Strings are built in arenas with `str_fmt(arena, ...)`. | No hidden allocation, and the lifetime is the arena's. |
 | Game state stores enums and IDs, never strings | Avoids the dangling string-literal problem from §3.2. |
-| *Added in ch01:* `ASSERT` is on in every build. It prints `file:line: ASSERT(cond) failed` and runs a trap instruction (`__builtin_trap`). | gdb stops inside the function that failed, not five frames deep in libc as with `assert()`. The message uses the compiler's error format, so editors can jump to it. |
+| *Added in ch01:* `ASSERT` is on in every build. It prints `file:line` and traps. | gdb stops inside the function that failed, not deep in libc as with `assert()`, and editors can jump to the line. |
 
 ### 3.4 Names and types
 
@@ -116,9 +118,9 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | The game exports `GAME_STATE_VERSION` (bumped by hand) and `sizeof(GameState)`. If either changes, the engine zeros game memory, calls `init` again, and logs it. | Code-only edits keep running. A layout change costs a stage restart instead of a crash. |
 | Engine module state lives inside each module (`renderer::draw_sprite(s, pos)`, with no context passed in) | There's only one window, GPU and audio device. The engine never reloads, so its internal state is safe. |
 | Game state hangs off the `GameState*` the engine passes in | Rules in §3.2. |
-| *Added in ch02:* `engine/momo.h` is the whole boundary: the engine functions marked `MOMO_API`, the `GameApi` struct, and the game's one export, `extern "C" momo_game_api()`. Both shared libraries are compiled with `-fvisibility=hidden`. `GameApi` has `init`, `update` and `shutdown` so far; `render` joins it when there's something to draw. **Changed in ch04** (next row). | Everything one binary can call in another is listed in one header, and nothing unmarked leaks out. `extern "C"` keeps the export's name unmangled, so `dlsym` can find it. |
-| *Changed in ch04:* The boundary is `momo.h` plus the engine module headers it includes (`arena.h` so far): every function marked `MOMO_API`. `MOMO_API` moved from `momo.h` to `base.h`. | Each module keeps its own `.h`/`.cpp` pair (§3.4), and the game needs some of them. A module header can't include `momo.h`, which includes it, so the macro moved to the header everything includes. |
-| *Added in ch02:* The engine loads `game.so` from the executable's folder (found through `/proc/self/exe`) with `dlopen(RTLD_NOW)`. `momo` and `game.so` find `libmomo.so` through a RUNPATH of `$ORIGIN`. | A build folder runs from anywhere, with no install step and no `LD_LIBRARY_PATH`. `RTLD_NOW` reports a missing engine function when the game loads, not in the middle of a frame. |
+| *Added in ch02:* `momo.h` is the whole boundary between the binaries. Both shared libraries build with `-fvisibility=hidden`, and the game's one export is `extern "C"`. **Changed in ch04** (next row). | Everything one binary can call in another is in one header, and nothing unmarked leaks out. `extern "C"` keeps the export's name unmangled for `dlsym`. |
+| *Changed in ch04:* The boundary is `momo.h` plus the module headers it includes: every function marked `MOMO_API`. The macro lives in `base.h`. | Each module keeps its own header (§3.4), and the game needs some of them. A module header can't include `momo.h`, which includes it. |
+| *Added in ch02:* The binaries find each other in the executable's folder, and `game.so` loads with `RTLD_NOW` | A build folder runs from anywhere, with no install step. A missing engine function fails when the game loads, not in the middle of a frame. |
 
 ### 4.2 Memory
 
@@ -127,9 +129,9 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | One `mmap` block, split into three arenas: **permanent** (whole run, survives reload), **stage** (reset when a stage loads), **frame** (reset every frame) | Grouping memory by lifetime means nothing gets freed one object at a time. |
 | Sizes are fixed. Running out is an `ASSERT`. The debug overlay shows peak usage. | Hitting a limit tells you something real about the game. |
 | Memory comes zeroed | ZII (§3.1). Untouched `mmap` pages are zero and don't use physical memory. |
-| *Added in ch04:* `Arena` is `{ base, size, used, peak }` in `engine/arena.h`, with `arena::init`, `push_bytes(size, align)` and `reset`. `push_bytes` aligns the address (not the offset), `memset`s what it returns to zero, `ASSERT`s when full, and updates `peak`. The arena doesn't own its block. | Zeroing in push keeps "push returns zeros" true after a reset too, and `reset` stays one line. Aligning the address works for any block, including a test's stack buffer. |
-| *Added in ch04:* Sizes: permanent 16 MB, stage 32 MB, frame 8 MB, in one `mmap(MAP_PRIVATE \| MAP_ANONYMOUS)` block of 56 MB, cut in that order. `munmap` at shutdown. | Generous for an NES-style game and nearly free until touched. One block is one call and, in chapter 21, one copy. |
-| *Added in ch04:* The engine resets the frame arena at the start of every frame, before `game.update`. The game resets the stage arena itself. The game reaches the arenas through `momo::permanent_arena()`, `stage_arena()` and `frame_arena()`. | Memory pushed during a frame stays valid for the rest of that frame. Only the game knows when a stage loads (§5). Engine state stays in the engine (§4.1). |
+| *Added in ch04:* An arena doesn't own its block. A push aligns the address (not the offset), zeroes what it returns, and `ASSERT`s when full. | Zeroing in push keeps "push returns zeros" true after a reset, and reset stays one line. Aligning the address works for any block, including a test's stack buffer. |
+| *Added in ch04:* Each arena is sized generously for an NES-style game | Untouched pages are nearly free. One block is one `mmap` call and, in chapter 21, one copy. |
+| *Added in ch04:* The engine resets the frame arena at the start of every frame. The game resets the stage arena itself, and reaches all three arenas through engine functions. | Memory pushed during a frame stays valid for the rest of that frame. Only the game knows when a stage loads (§5). Engine state stays in the engine (§4.1). |
 | *Added in ch04:* Until the debug overlay (chapter 13), the engine prints each arena's peak when it quits | The sizes can be checked against real use. |
 | *Added in ch04:* ASan can't see inside an arena. Containers check their indices with `ASSERT` instead. | ASan only tracks `malloc`, stack and global memory. Its manual poisoning interface is the fallback if this ever bites. |
 
@@ -204,10 +206,10 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Random numbers come from a generator whose state is in `GameState`, never `rand()` | Replays stay deterministic. |
 | Dear ImGui only in Part II, and only if it proves necessary | Hot reload already makes tuning numbers in code fast. |
 | A tiny test runner we write ourselves (`make test`) for pure logic: math, fixed-point, containers, collision | Those bugs are much easier to find in a test than at 60 fps. Test frameworks are heavy on templates. |
-| *Added in ch03:* Each `tests/<name>_test.cpp` is its own program. Its tests are `static` functions, and its `main` runs each one with `RUN(name)`. The runner is `tests/test.h` + `tests/test.cpp`. | No self-registering tests, which would run code before `main` (§3.1). A test missing from `main` is an unused `static` function, which `-Wall` warns about. A crash stops one program, not every test. |
-| *Added in ch03:* `CHECK(cond)` and `CHECK_EQ(a, b)` (integers, printed on failure) print `file:line`, mark the test failed and return from it. The runner then runs the next test. The test's name is printed and flushed before it runs. | One run reports every failing test. If a test crashes, its name is already on screen. `break test::fail` in gdb stops at any failed check. |
-| *Added in ch03:* Test programs link the engine as a static archive, `build/<config>/obj/libmomo.a`, built from the same object files as `libmomo.so` | A test gets only the engine object files it uses, so the arena test won't need SDL, and it can call functions that aren't `MOMO_API`. |
-| *Added in ch03:* `make test` runs every test program, then fails if any of them failed. It uses the debug build (sanitizers on) unless given `CONFIG=release`. A program given a word runs only the tests whose names contain it. | Every failure shows up in one run, and tests catch memory bugs and UB, not only wrong answers. |
+| *Added in ch03:* Each test file is its own program. Its tests are `static` functions that its `main` runs one by one. | No self-registering tests, which would run code before `main` (§3.1). A test left out of `main` is an unused function, which `-Wall` warns about. A crash stops one program, not every test. |
+| *Added in ch03:* A failed check ends its test, not the program. Each test's name is printed before it runs. | One run reports every failing test, and if a test crashes, its name is already on screen. |
+| *Added in ch03:* Test programs link the engine as a static archive, built from the same object files as `libmomo.so` | A test gets only the engine code it uses, so the arena test won't need SDL, and it can call functions that aren't `MOMO_API`. |
+| *Added in ch03:* `make test` runs every test program on the debug build, then fails if any of them failed | Every failure shows up in one run, and the sanitizers catch memory bugs and UB, not only wrong answers. |
 
 ## 5. Game
 
@@ -237,12 +239,12 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 |---|---|
 | GNU Make. `make` builds the debug build (`-O0 -g3`, AddressSanitizer + UndefinedBehaviorSanitizer, asserts on). `make release` uses `-O2 -g` with asserts still on. Both support hot reload. No static shipping build. | Separate compilation and linking stay visible. The sanitizers catch exactly the bugs C-style code invites. |
 | `libmomo.so` is built with `-fPIC` and an export macro | Required by §4.1. |
-| *Added in ch01:* warnings are `-Wall -Wextra -Wno-missing-field-initializers` | In C++, GCC's `-Wmissing-field-initializers` (part of `-Wextra`) warns when a designated initializer leaves fields out, and leaving them out is how ZII code is written. GCC doesn't warn about that in C. |
-| *Added in ch02:* Each build has its own folder, `build/debug/` or `build/release/`, holding `momo`, `libmomo.so`, `game.so` and `obj/`. `make release` runs `make CONFIG=release`. `-MMD -MP` track header dependencies, and every rule also depends on the Makefile. | Both builds exist side by side. Editing a header or a flag rebuilds exactly what it affects. |
+| *Added in ch01:* warnings are `-Wall -Wextra -Wno-missing-field-initializers` | In C++, `-Wextra` warns when a designated initializer leaves fields out, and leaving them out is how ZII code is written (§3.1). |
+| *Added in ch02:* Each build config has its own folder under `build/`. Make tracks header dependencies, and every rule also depends on the Makefile. | Both builds exist side by side. Editing a header or a flag rebuilds exactly what it affects. |
 | *Added in ch02:* Shared libraries link with `-Wl,--no-undefined` | Calling an engine function that isn't exported fails at link time instead of when `game.so` loads. |
-| *Added in ch02:* Every build writes `compile_commands.json` at the repo root, from the same variables the build uses. Git ignores it, and clangd's `.cache/` too. | Editors (you use clangd) compile each file with the build's exact flags. It holds absolute paths, so it's generated, not committed. |
+| *Added in ch02:* Every build writes `compile_commands.json` at the repo root, from the build's own flags | clangd sees each file with the build's exact flags. It holds absolute paths, so it's generated and gitignored. |
 | *Added in ch03:* The debug build adds `-fno-sanitize-recover=all` | UBSan otherwise prints a report and keeps going, so a test with undefined behavior could still pass. Bugs stop the program (§3.3), in the tests and in the game. |
-| *Added in ch03:* Test programs are built in `build/<config>/tests/`, compiled with plain `CXXFLAGS`, and listed in `compile_commands.json` | They're executables, like the host. |
+| *Added in ch03:* Test programs are built and listed in `compile_commands.json` like the host | They're executables too. |
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
@@ -250,7 +252,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 ```
 momo/
   Makefile
-  book/          chapters (NN-slug.md), design.md, plan.md
+  book/          chapters (NN-slug.md), plan.md, outline.md, changelog.md, design.md
   host/          main.cpp, the executable: calls momo::run()
   engine/        libmomo.so
   game/          game.so
@@ -265,87 +267,10 @@ Each folder is created in the chapter that first needs it.
 
 ## 8. Outline
 
-### Part I: from nothing to one stage and its boss
-
-**A. Foundations (terminal only)**
-- 00 Preface
-- 01 The Dialect: the Orthodox rules, `base.h` (types, `ASSERT`, macros)
-- 02 Three Binaries: host, `libmomo.so`, `game.so`, and the Makefile. *Changed in ch02:* also loads `game.so` once with `dlopen` through the game API struct, and generates `compile_commands.json`.
-- 03 A Test Runner: `make test` in about 50 lines. *Changed in ch03:* about 90 lines, one program per test file, and `min`, `max` and `clamp` join `base.h` as the first code under test.
-- 04 Arenas: permanent, stage and frame on `mmap`, zeroed, with overflow asserts
-- 05 Strings and Logging: `Str`, `str_fmt`, `log::info`
-- 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap.
-
-**B. Window and clock**
-- 07 Platform Layer: an SDL3 window behind `platform::`
-- 08 OpenGL 4.6: glad, DSA, the debug callback, a clear color
-- 09 Fixed Timestep: the accumulator, the tick cap, ticks vs frames
-
-**C. Drawing**
-- 10 Sprite Batch: colored rectangles, one draw call, layers
-- 11 Virtual Screen: 256×240, whole-number scaling, black bars
-- 12 Textures: stb_image; an 8×8 font in code as the first texture
-- 13 Debug Text and Capture: the overlay, `--capture`
-
-**D. Moving things**
-- 14 Input: the virtual pad, keyboard and gamepad, latching to ticks
-- 15 Fixed-Point: `Fx`, `Fx2`, tests
-- *Appendix A: `design.md` is drafted here*
-- 16 Entities: `Entity`, `kind`, `Pool<T>`, generational handles, `switch` dispatch
-- 17 Text Tilemaps
-- 18 Collision: pixel-by-pixel stepping (Actor/Solid), with tests
-- 19 Debug Drawing: hitboxes, collision tiles
-- 20 Run and Jump: variable-height jump, gravity, maximum fall speed
-- 21 Pause, Step, Record, Loop
-- 22 Ladders and Spikes: tile types, climbing, death and respawn
-
-**E. A stage**
-- 23 Rooms and Camera: bounds, pixel snapping, screen-scroll transitions
-- 24 Spawning: spawn on scroll-in, despawn on scroll-out
-- 25 Shooting: at most 3 shots, hitboxes vs hurtboxes, damage, invincibility frames, knockback
-- 26 Enemies: three behaviors, random numbers in `GameState`
-- 27 Health and HUD: health bar, lives, checkpoint
-- 28 Game Flow: title → stage → game over or victory
-
-**F. Real content**
-- 29 Sprites and Animation: CC0 art, animation tables in code
-- 30 The Bake Tool
-- 31 Palette Sprites: index textures, palette rows, hit flash
-- 32 LDtk Import
-- 33 Asset Hot Reload
-- 34 The Mixer: SDL3 stream, voices, WAV
-- 35 Music: streaming OGG
-
-**G. The boss**
-- 36 Boss Gate: shutters, transition, health bar fill
-- 37 The Boss: attack pattern as a state machine, victory
-- 38 Step Tables: *only if chapter 37 turns out painful*
-
-### Part II: the vertical slice (a sketch, refined when we get there)
-
-Title screen and stage select · a second stage · a second boss · taking powers and switching between them, with a palette per power · the weakness table · the ECS chapter (build it, port to it, compare) · Dear ImGui, if it proves necessary · *optional:* Lua vs C++, the same boss written twice.
-
-### Possible bonus chapters
-
-An SDL_GPU renderer backend (macOS) · a Windows port · an NES-style synth.
+The chapter-by-chapter outline is in [outline.md](outline.md).
 
 ## 9. Out of scope
 
 Networking · saving or passwords · threads of our own · 3D · an in-engine editor · localization, and fonts beyond the 8×8 bitmap font · web or mobile · a static shipping build · testing on Windows or macOS during Parts I and II (the code stays portable, but only Linux gets tested).
 
-Anything here can move into scope later through a chapter. If it does, it gets logged below.
-
-## 10. Change log
-
-| Chapter | Change | Why |
-|---|---|---|
-| ch00 | Plan written from the design session on 2026-10-08 | Starting point. |
-| ch01 | Added dialect details: `= {}` and designated initializers, C-style casts, how `ASSERT` stops, `i32` counts and `i64` sizes, `UPPER_SNAKE` constants, `-Wno-missing-field-initializers` | Writing `base.h` and its test program needed them, and the plan didn't cover them yet. |
-| ch02 | Moved loading `game.so` with `dlopen` and the `GameApi` struct from chapter 06 to chapter 02 | A `game.so` that nothing loads would prove nothing. Chapter 06 keeps the reloading itself. |
-| ch02 | Added the boundary and build details: `momo.h`, `-fvisibility=hidden`, `extern "C"`, `RTLD_NOW`, `$ORIGIN`, `--no-undefined`, the build folder layout, `compile_commands.json` | The Makefile and the first engine code needed them. You asked for `compile_commands.json` so clangd works. |
-| ch03 | Added the test runner's design: one program per test file, `RUN`/`CHECK`/`CHECK_EQ`, linking tests against `libmomo.a`, how `make test` runs them | Plan §4.10 only said "a tiny test runner". |
-| ch03 | The debug build now stops at the first sanitizer report (`-fno-sanitize-recover=all`) | Writing the tests showed that a test with signed overflow passed while UBSan only printed a warning. |
-| ch03 | Added `min`, `max` and `clamp` to `base.h` | The runner needed real code to test, and chapters 04, 09 and 23 need these functions. |
-| ch04 | Added the arena details: the `Arena` struct and functions, zeroing in push, aligning addresses, the sizes, who resets which arena, the accessors | Plan §4.2 only described the three arenas. |
-| ch04 | The boundary became `momo.h` plus the module headers it includes, and `MOMO_API` moved to `base.h` | `arena.h` is the first engine module the game calls into. |
-| ch04 | Allowed `arena::push<T>` and `push_array<T>` as templates | They're typed wrappers over one untyped function, clearer than a macro. |
+Anything here can move into scope later through a chapter. If it does, [changelog.md](changelog.md) records it.
