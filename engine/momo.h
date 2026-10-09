@@ -13,8 +13,8 @@
 
 namespace momo {
 
-// Loads game.so and runs it until the game calls quit(). Returns the exit
-// code for main().
+// Loads game.so and runs it until the game calls quit() or you press Ctrl+C,
+// reloading game.so whenever it changes. Returns the exit code for main().
 MOMO_API i32 run();
 
 // The frame being run, counting from 0.
@@ -23,9 +23,11 @@ MOMO_API i32 frame_index();
 // Stops the loop once the current frame is done.
 MOMO_API void quit();
 
-// The engine's three arenas, which last for different lengths of time:
+// The game's three arenas, which last for different lengths of time:
 //
-//   permanent  the whole run
+//   permanent  the whole run, unless a reload changes GameState's layout:
+//              then the engine resets it and the stage arena, and the game
+//              starts over
 //   stage      until the game resets it, which it does when a stage loads
 //   frame      one frame: the engine resets it before every update
 MOMO_API Arena* permanent_arena();
@@ -36,11 +38,24 @@ MOMO_API Arena* frame_arena();
 
 // ---- The game (game.so) -----------------------------------------------------
 
-// The functions the engine calls in game.so.
+// Everything the game remembers from one frame to the next. The game defines
+// it, and the engine only ever passes a pointer to it, so the engine doesn't
+// need to know what's inside. The engine keeps it in the permanent arena,
+// where it survives a reload unless its layout changes (see GameApi).
+struct GameState;
+
+// What game.so hands the engine: the size and version of its GameState, and
+// the functions the engine calls. After every reload the engine asks again.
 struct GameApi {
-    void (*init)();
-    void (*update)();
-    void (*shutdown)();
+    // GAME_STATE_VERSION, which the game bumps by hand, and sizeof(GameState).
+    // If either one changes in a reload, the old state no longer fits the new
+    // code, and the engine starts the game over with a new one.
+    i32 state_version;
+    i64 state_size;
+
+    void (*init)(GameState* state);
+    void (*update)(GameState* state);
+    void (*shutdown)(GameState* state);
 };
 
 // The one function game.so exports. The engine finds it by name with dlsym.

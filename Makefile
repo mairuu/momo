@@ -88,8 +88,12 @@ test: $(TEST_PROGS) compile_commands.json
 $(OUT)/libmomo.so: $(ENGINE_OBJ) Makefile
 	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) -o $@
 
+# The running engine reloads game.so as soon as it changes (chapter 06), so
+# the new file has to appear all at once. The linker writes it under another
+# name, and mv renames it into place, which replaces the old file in one step.
 $(OUT)/game.so: $(GAME_OBJ) $(OUT)/libmomo.so Makefile
-	$(CXX) $(LIB_LDFLAGS) $(GAME_OBJ) $(LINK_MOMO) -o $@
+	$(CXX) $(LIB_LDFLAGS) $(GAME_OBJ) $(LINK_MOMO) -o $@.tmp
+	mv $@.tmp $@
 
 $(OUT)/momo: $(HOST_OBJ) $(OUT)/libmomo.so Makefile
 	$(CXX) $(LDFLAGS) $(HOST_OBJ) $(LINK_MOMO) -o $@

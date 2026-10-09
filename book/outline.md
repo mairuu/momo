@@ -13,7 +13,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 03 A Test Runner: `make test` in about 50 lines. *Changed in ch03:* about 90 lines, one program per test file, and `min`, `max` and `clamp` join `base.h` as the first code under test.
 - 04 Arenas: permanent, stage and frame on `mmap`, zeroed, with overflow asserts
 - 05 Strings and Logging: `Str`, `str_fmt`, `log::info`. *Changed in ch05:* `str::fmt`, and the log is the macros `LOG_INFO`, `LOG_WARN` and `LOG_ERROR`, since `log` can't be a namespace. `i64` also became `long long`.
-- 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap.
+- 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap. *Changed in ch06:* also gives the engine an arena of its own, and the loop runs about 60 times a second until Ctrl+C, until chapters 07 and 09 replace both.
 
 **B. Window and clock**
 - 07 Platform Layer: an SDL3 window behind `platform::`

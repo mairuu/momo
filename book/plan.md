@@ -124,12 +124,17 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch02:* `momo.h` is the whole boundary between the binaries. Both shared libraries build with `-fvisibility=hidden`, and the game's one export is `extern "C"`. **Changed in ch04** (next row). | Everything one binary can call in another is in one header, and nothing unmarked leaks out. `extern "C"` keeps the export's name unmangled for `dlsym`. |
 | *Changed in ch04:* The boundary is `momo.h` plus the module headers it includes: every function marked `MOMO_API`. The macro lives in `base.h`. | Each module keeps its own header (§3.4), and the game needs some of them. A module header can't include `momo.h`, which includes it. |
 | *Added in ch02:* The binaries find each other in the executable's folder, and `game.so` loads with `RTLD_NOW` | A build folder runs from anywhere, with no install step. A missing engine function fails when the game loads, not in the middle of a frame. |
+| *Added in ch06:* Each frame starts by checking `game.so`'s modification time. To reload, the engine closes the old library, then opens the new one. | One `stat` costs well under a microsecond. `dlopen` hands back the library it already has for a path it has opened before. |
+| *Added in ch06:* If the new `game.so` fails to load, the engine logs why, stops calling the game, and tries again when the file next changes | A broken build doesn't stop momo or touch the game's state, so the fixed build carries on where the game stopped. |
+| *Added in ch06:* `game.so` is linked under a temporary name and renamed into place | The linker writes the file over many milliseconds, and without the rename the engine saw it half-written on every rebuild. A rename swaps in the whole file at once. |
+| *Added in ch06:* The engine declares `GameState` but never defines it | It passes the game's state along without being able to depend on what's inside. |
+| *Added in ch06:* Only `game.so` reloads. A change to the engine or to `momo.h` needs a restart. | The running engine can't be swapped, and both sides must agree on `momo.h`. |
 
 ### 4.2 Memory
 
 | Decision | Why |
 |---|---|
-| One `mmap` block, split into three arenas: **permanent** (whole run, survives reload), **stage** (reset when a stage loads), **frame** (reset every frame) | Grouping memory by lifetime means nothing gets freed one object at a time. |
+| One `mmap` block, split into three arenas: **permanent** (whole run, survives reload), **stage** (reset when a stage loads), **frame** (reset every frame). **Changed in ch06** (last row). | Grouping memory by lifetime means nothing gets freed one object at a time. |
 | Sizes are fixed. Running out is an `ASSERT`. The debug overlay shows peak usage. | Hitting a limit tells you something real about the game. |
 | Memory comes zeroed | ZII (§3.1). Untouched `mmap` pages are zero and don't use physical memory. |
 | *Added in ch04:* An arena doesn't own its block. A push aligns the address (not the offset), zeroes what it returns, and `ASSERT`s when full. | Zeroing in push keeps "push returns zeros" true after a reset, and reset stays one line. Aligning the address works for any block, including a test's stack buffer. |
@@ -137,6 +142,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch04:* The engine resets the frame arena at the start of every frame. The game resets the stage arena itself, and reaches all three arenas through engine functions. | Memory pushed during a frame stays valid for the rest of that frame. Only the game knows when a stage loads (§5). Engine state stays in the engine (§4.1). |
 | *Added in ch04:* Until the debug overlay (chapter 13), the engine prints each arena's peak when it quits | The sizes can be checked against real use. |
 | *Added in ch04:* ASan can't see inside an arena. Containers check their indices with `ASSERT` instead. | ASan only tracks `malloc`, stack and global memory. Its manual poisoning interface is the fallback if this ever bites. |
+| *Changed in ch06:* A fourth arena belongs to the engine, and the game can't reach it. Permanent and stage hold only the game's memory, side by side at the start of the block, and the engine resets both when `GameState`'s layout changes. | The reset would wipe anything the engine kept in the permanent arena. Chapter 21's snapshots should copy all of the game's memory and none of the engine's, in one piece. |
 
 ### 4.3 The frame
 
