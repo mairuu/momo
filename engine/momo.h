@@ -1,17 +1,11 @@
 // momo.h: the boundary between momo's three binaries. The host and game.so
-// call the engine functions declared here, and the engine calls the game
+// call the engine functions declared here and in the module headers it
+// includes (every function marked MOMO_API), and the engine calls the game
 // through GameApi.
 #pragma once
 
 #include "base.h"
-
-// MOMO_API marks a function that one binary calls in another. Both shared
-// libraries are compiled with -fvisibility=hidden, so any function without it
-// can only be called from inside its own library.
-//
-// A Windows port would make this __declspec(dllexport) while building the
-// library and __declspec(dllimport) everywhere else.
-#define MOMO_API __attribute__((visibility("default")))
+#include "arena.h"
 
 // ---- The engine (libmomo.so) ------------------------------------------------
 
@@ -26,6 +20,15 @@ MOMO_API i32 frame_index();
 
 // Stops the loop once the current frame is done.
 MOMO_API void quit();
+
+// The engine's three arenas, which last for different lengths of time:
+//
+//   permanent  the whole run
+//   stage      until the game resets it, which it does when a stage loads
+//   frame      one frame: the engine resets it before every update
+MOMO_API Arena* permanent_arena();
+MOMO_API Arena* stage_arena();
+MOMO_API Arena* frame_arena();
 
 } // namespace momo
 

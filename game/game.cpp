@@ -1,5 +1,5 @@
-// game.cpp: the game. For now it only shows the engine calling the game and
-// the game calling the engine.
+// game.cpp: the game. For now it only shows the engine calling the game, the
+// game calling the engine, and the game using the frame arena.
 #include "momo.h"
 
 namespace game {
@@ -11,8 +11,18 @@ void init()
 
 void update()
 {
-    printf("game: update, frame %d\n", momo::frame_index());
-    if (momo::frame_index() == 2)
+    i32 frame = momo::frame_index();
+
+    // Memory that lasts until the end of this frame. The engine resets the
+    // frame arena before every update, so the game never frees anything.
+    i32 count = 100 * (frame + 1);
+    i32* numbers = arena::push_array<i32>(momo::frame_arena(), count);
+    for (i32 i = 0; i < count; i++)
+        numbers[i] = i;
+
+    printf("game: update, frame %d: %d numbers at %p, frame arena has %lld bytes used\n",
+           frame, count, (void*)numbers, (long long)momo::frame_arena()->used);
+    if (frame == 2)
         momo::quit();
 }
 

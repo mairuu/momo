@@ -26,6 +26,21 @@ using f64 = double;
 static_assert(sizeof(f32) == 4 && sizeof(f64) == 8, "f32 and f64 must be 32 and 64 bits");
 static_assert(sizeof(void*) == 8, "momo assumes a 64-bit platform");
 
+// Byte sizes: 16 * MB.
+constexpr i64 KB = 1024;
+constexpr i64 MB = 1024 * KB;
+
+// ---- MOMO_API -------------------------------------------------------------
+
+// MOMO_API marks a function that one binary calls in another. Both shared
+// libraries are compiled with -fvisibility=hidden, so any function without it
+// can only be called from inside its own library. It lives here because every
+// engine module's header uses it (chapter 04).
+//
+// A Windows port would make this __declspec(dllexport) while building the
+// library and __declspec(dllimport) everywhere else.
+#define MOMO_API __attribute__((visibility("default")))
+
 // ---- ASSERT ---------------------------------------------------------------
 
 // ASSERT(cond) states something that is true unless there's a bug. It is on
