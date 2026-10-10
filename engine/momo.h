@@ -13,8 +13,9 @@
 
 namespace momo {
 
-// Loads game.so and runs it until the game calls quit() or you press Ctrl+C,
-// reloading game.so whenever it changes. Returns the exit code for main().
+// Loads game.so, opens the window, and runs the game until it calls quit(),
+// the window is closed, or you press Ctrl+C, reloading game.so whenever it
+// changes. Returns the exit code for main().
 MOMO_API i32 run();
 
 // The frame being run, counting from 0.

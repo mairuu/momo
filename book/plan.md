@@ -163,6 +163,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Input is a **polled virtual NES pad**: d-pad, Jump, Shoot, Start, Select, previous/next power. Keyboard and gamepad map onto it. The game calls `input::down` / `pressed` / `released`. | The game never sees real keys. Polling suits a fixed-tick game. |
 | Presses are **latched to ticks** | A tap between two ticks still counts, and "pressed" is true on exactly one tick even when a frame runs zero ticks. |
 | The engine handles non-gameplay events itself (lost focus pauses, resize, gamepad plugged in) | Hazel's event system mostly serves the editor and UI, which are out of scope. |
+| *Added in ch07:* `platform::` is the only engine module that includes SDL or an OS header. It uses SDL wherever SDL has the function (window, events, paths, file times, libraries, sleeping), and calls the OS only where it doesn't (reserving memory). None of it is `MOMO_API`. | The rest of the engine reads in momo's types and logs failures the momo way, and porting, or replacing SDL, rewrites one file. On Linux, SDL makes the same calls momo made itself before. |
+| *Added in ch07:* Closing the window, Ctrl+C and `kill` all become SDL's quit event, the loop's one way out. momo's own `SIGINT` handler is gone. | SDL installs the signal handlers itself, and a window adds a second way to quit. |
 
 ### 4.5 Rendering
 
@@ -219,6 +221,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch03:* A failed check ends its test, not the program. Each test's name is printed before it runs. | One run reports every failing test, and if a test crashes, its name is already on screen. |
 | *Added in ch03:* Test programs link the engine as a static archive, built from the same object files as `libmomo.so` | A test gets only the engine code it uses, so the arena test won't need SDL, and it can call functions that aren't `MOMO_API`. |
 | *Added in ch03:* `make test` runs every test program on the debug build, then fails if any of them failed | Every failure shows up in one run, and the sanitizers catch memory bugs and UB, not only wrong answers. |
+| *Added in ch07:* The debug build's executable tells LeakSanitizer to skip leaks whose call stack passes through `libSDL3.so`, and LeakSanitizer lists what it skipped at every exit | The graphics driver keeps memory that only its own globals point to, so it looks leaked once `SDL_Quit` unloads the driver. momo's own memory comes from arenas. The list keeps the suppression in sight. |
 
 ## 5. Game
 
@@ -255,6 +258,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch03:* The debug build adds `-fno-sanitize-recover=all` | UBSan otherwise prints a report and keeps going, so a test with undefined behavior could still pass. Bugs stop the program (§3.3), in the tests and in the game. |
 | *Added in ch03:* Test programs are built and listed in `compile_commands.json` like the host | They're executables too. |
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
+| *Added in ch07:* Only the engine gets SDL's compile and link flags | The host and the game never call SDL. With `--no-undefined`, a game that tries fails to link. |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
 

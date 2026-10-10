@@ -23,3 +23,8 @@ Every change to [plan.md](plan.md) and [outline.md](outline.md), oldest first. T
 | ch06 | The Makefile links `game.so` under a temporary name and renames it into place | Without the rename, the engine loaded a half-written `game.so` on every rebuild. |
 | ch06 | Added a fourth arena, the engine's own. Permanent and stage became the game's alone. | Starting the game over after a layout change resets the permanent arena, which would have wiped the engine's data, and chapter 21 should snapshot only the game's memory. |
 | ch06 | The loop runs until Ctrl+C, about 60 times a second. The outline says so. | Hot reload needs a game that keeps running. Chapters 07 and 09 replace the Ctrl+C handler and the sleep. |
+| ch07 | Added the platform layer: SDL wherever it has the function, the OS only for reserving memory, nothing `MOMO_API`, and only the engine compiled and linked with SDL | Plan §4.4 only said "SDL3 behind `platform::`". |
+| ch07 | Closing the window, Ctrl+C and `kill` all become SDL's quit event, replacing chapter 06's `SIGINT` handler | SDL installs the signal handlers itself, and the window adds a second way to quit. |
+| ch07 | The debug build skips LeakSanitizer reports that pass through SDL | The graphics driver's memory looked leaked once `SDL_Quit` unloaded the driver, so every debug run failed when it quit. |
+| ch07 | Chapter 07 fills the window with one color until chapter 08, and the outline says so | A Wayland compositor shows no window until it has a picture. |
+| ch07 | Chapter 21 also decides whether losing focus pauses the game, and the outline says so | Plan §4.4 says it does, but a game that pauses can't keep looping while you edit its code in another window. |

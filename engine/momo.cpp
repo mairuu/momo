@@ -1,14 +1,9 @@
 // momo.cpp: the engine's entry point. It reserves memory, loads game.so,
-// runs the loop, and reloads game.so whenever it changes.
+// opens the window, runs the loop, and reloads game.so whenever it changes.
 #include "momo.h"
+#include "platform.h"
 
-#include <dlfcn.h>
-#include <limits.h>
-#include <signal.h>
 #include <stddef.h>
-#include <sys/mman.h>
-#include <sys/stat.h>
-#include <unistd.h>
 
 namespace momo {
 
@@ -16,7 +11,7 @@ namespace momo {
 // Like every static, it starts out zeroed.
 struct Engine {
     Str game_path;  // the full path to game.so, in the engine's own arena
-    void* game_lib; // the handle dlopen returned for game.so, or null
+    void* game_lib; // the handle platform::open_library returned, or null
     i64 game_time;  // game.so's modification time when it was last loaded
     GameApi game;
 
@@ -29,7 +24,7 @@ struct Engine {
     i32 frame_index;
     bool quit_requested;
 
-    u8* memory; // one block from mmap, split into the four arenas
+    u8* memory; // one block from the OS, split into the four arenas
     i64 memory_size;
     Arena permanent; // the game's three arenas
     Arena stage;
@@ -46,20 +41,20 @@ constexpr i64 STAGE_SIZE = 32 * MB;
 constexpr i64 FRAME_SIZE = 8 * MB;
 constexpr i64 ENGINE_SIZE = 8 * MB;
 
-// Reserves one block for all four arenas. mmap hands out whole pages of
-// zeros, and Linux only gives a page physical memory when it's first
-// touched, so reserving more than the game uses costs almost nothing.
-// mmap is POSIX; Windows has VirtualAlloc instead. Chapter 07 moves this
-// behind platform::.
+// The window: three times the 256x240 screen the game will draw, which
+// chapter 11 scales to fit whatever size the window is.
+constexpr i32 WINDOW_WIDTH = 3 * 256;
+constexpr i32 WINDOW_HEIGHT = 3 * 240;
+
+// Reserves one block for all four arenas. The OS hands out zeroed pages,
+// and only gives a page physical memory when it's first touched, so
+// reserving more than the game uses costs almost nothing.
 static bool init_memory()
 {
     i64 size = PERMANENT_SIZE + STAGE_SIZE + FRAME_SIZE + ENGINE_SIZE;
-    void* memory = mmap(nullptr, size, PROT_READ | PROT_WRITE,
-                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
-    if (memory == MAP_FAILED) {
-        LOG_ERROR("can't reserve %lld MB of memory", size / MB);
-        return false;
-    }
+    void* memory = platform::reserve_memory(size);
+    if (!memory)
+        return false; // already logged
     engine.memory = (u8*)memory;
     engine.memory_size = size;
 
@@ -90,65 +85,39 @@ static void shutdown_memory()
     log_peak("stage", engine.stage);
     log_peak("frame", engine.frame);
     log_peak("engine", engine.arena);
-    munmap(engine.memory, engine.memory_size);
+    platform::release_memory(engine.memory, engine.memory_size);
 }
 
 // Works out where game.so is: in the executable's folder. The path goes in
 // the engine's arena, since the engine needs it for the whole run.
-// /proc is Linux-only. Chapter 07 moves this behind platform::.
 static bool find_game()
 {
-    // /proc/self/exe is a link to the running executable, always as an
-    // absolute path. readlink returns the path's length and doesn't add a
-    // 0 after it, so the path is a Str: the buffer and that length.
-    char exe_buffer[PATH_MAX] = {};
-    i32 exe_len = (i32)readlink("/proc/self/exe", exe_buffer, sizeof(exe_buffer));
-    if (exe_len < 0) {
-        LOG_ERROR("can't find the executable's path");
-        return false;
-    }
-    Str exe = { .data = exe_buffer, .len = exe_len };
-
-    // ".../build/debug/momo" -> ".../build/debug" -> ".../build/debug/game.so"
-    Str folder = str::slice(exe, 0, str::find_last(exe, '/'));
-    engine.game_path = str::fmt(&engine.arena, "%.*s/game.so", folder.len, folder.data);
+    // ".../build/debug/" -> ".../build/debug/game.so"
+    const char* folder = platform::executable_folder();
+    if (!folder)
+        return false; // already logged
+    engine.game_path = str::fmt(&engine.arena, "%sgame.so", folder);
     return true;
 }
 
-// When the file at path was last modified, in nanoseconds since 1970, or 0
-// if there's no file there. C names both the function and its result
-// "stat", so C++ needs the word struct to tell them apart.
-static i64 file_time(Str path)
-{
-    struct stat info = {};
-    if (stat(path.data, &info) != 0)
-        return 0;
-    return (i64)info.st_mtim.tv_sec * 1000000000 + info.st_mtim.tv_nsec;
-}
-
-// Opens game.so and fills in engine.game. dlopen is POSIX; Windows has
-// LoadLibrary instead. Chapter 07 moves it behind platform::.
+// Opens game.so and fills in engine.game.
 static bool load_game()
 {
     // The time is read before opening, so if the file changes again in
     // between, the next check sees a newer time and loads it once more.
     // It's recorded even if loading fails, so a broken game.so is tried
-    // once, not on every frame.
-    engine.game_time = file_time(engine.game_path);
+    // once, not on every frame. str::fmt put a 0 after the path, so the
+    // platform functions can take it.
+    engine.game_time = platform::file_time(engine.game_path.data);
 
-    // RTLD_NOW looks up every engine function game.so calls right here, so
-    // a missing one fails now, with a message, instead of in the middle of
-    // a frame. str::fmt put a 0 after the path, so dlopen can take it.
-    engine.game_lib = dlopen(engine.game_path.data, RTLD_NOW);
-    if (!engine.game_lib) {
-        LOG_ERROR("%s", dlerror());
-        return false;
-    }
+    engine.game_lib = platform::open_library(engine.game_path.data);
+    if (!engine.game_lib)
+        return false; // already logged, like every platform:: failure
 
-    auto* get_game_api = (GameApiFn*)dlsym(engine.game_lib, "momo_game_api");
+    auto* get_game_api =
+        (GameApiFn*)platform::find_function(engine.game_lib, "momo_game_api");
     if (!get_game_api) {
-        LOG_ERROR("%s", dlerror());
-        dlclose(engine.game_lib);
+        platform::close_library(engine.game_lib);
         engine.game_lib = nullptr;
         return false;
     }
@@ -162,7 +131,7 @@ static bool load_game()
 // which is often the new game.so.
 static void unload_game()
 {
-    dlclose(engine.game_lib);
+    platform::close_library(engine.game_lib);
     engine.game_lib = nullptr;
     engine.game = {};
 }
@@ -191,13 +160,13 @@ static void reload_game_if_changed()
 {
     // No file (in the middle of make clean, say) isn't a change: the old
     // code is still in memory and keeps running.
-    i64 time = file_time(engine.game_path);
+    i64 time = platform::file_time(engine.game_path.data);
     if (time == 0 || time == engine.game_time)
         return;
 
-    // The old game.so has to be closed first. dlopen finds libraries it has
-    // already loaded by their path, so opening the same path again would
-    // only hand back the old one.
+    // The old game.so has to be closed first. dlopen, under open_library,
+    // finds libraries it has already loaded by their path, so opening the
+    // same path again would only hand back the old one.
     if (engine.game_lib)
         unload_game();
     if (!load_game())
@@ -216,23 +185,10 @@ static void reload_game_if_changed()
     start_game();
 }
 
-// Ctrl+C sends momo the signal SIGINT, which ends a process on the spot
-// unless it has a handler. With this one, Ctrl+C stops the loop instead, and
-// the game shuts down as usual. A handler can run between any two
-// instructions, so it only sets a flag: sig_atomic_t is the type C promises
-// a handler can set safely, and volatile makes the loop read it fresh every
-// time. Chapter 07 hands this job to SDL.
-static volatile sig_atomic_t interrupted;
-
-static void on_interrupt(int)
-{
-    interrupted = 1;
-}
-
 i32 run()
 {
     // On a failure here, the process exits right away, and the OS takes
-    // back its memory and closes its libraries.
+    // back its memory, closes its libraries and its window.
     if (!init_memory())
         return 1;
     if (!find_game())
@@ -241,27 +197,33 @@ i32 run()
         return 1;
     LOG_INFO("loaded %.*s", engine.game_path.len, engine.game_path.data);
 
-    signal(SIGINT, on_interrupt);
+    // The window opens before the game starts. From chapter 12 on, the
+    // game's init loads textures, and OpenGL needs a window before it can
+    // take them.
+    if (!platform::init("momo", WINDOW_WIDTH, WINDOW_HEIGHT))
+        return 1;
 
     start_game();
-    while (!engine.quit_requested && !interrupted) {
+    while (!engine.quit_requested) {
+        if (!platform::handle_events())
+            break; // the window was closed, or Ctrl+C
         reload_game_if_changed();
         arena::reset(&engine.frame); // last frame's memory is free again
         if (engine.game_lib)
             engine.game.update(engine.state);
+        platform::present();
         engine.frame_index++;
 
-        // About 60 frames a second, so the game runs long enough to be
-        // rebuilt. Chapter 09 replaces this with a real clock.
-        usleep(16 * 1000);
+        // About 60 frames a second. Chapter 09 replaces this with a real
+        // clock.
+        platform::sleep_ms(16);
     }
-    if (interrupted)
-        LOG_INFO("interrupted");
 
     if (engine.game_lib) {
         engine.game.shutdown(engine.state);
         unload_game();
     }
+    platform::shutdown();
 
     LOG_INFO("quit after %d frames", engine.frame_index);
     shutdown_memory();

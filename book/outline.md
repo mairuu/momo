@@ -16,7 +16,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 06 Hot Reload: `dlopen`, the game API struct, engine-owned memory, the version check. *Changed in ch02:* `dlopen` and the API struct arrive in chapter 02, so this chapter is about reloading: noticing a new `game.so`, swapping it, and keeping game state across the swap. *Changed in ch06:* also gives the engine an arena of its own, and the loop runs about 60 times a second until Ctrl+C, until chapters 07 and 09 replace both.
 
 **B. Window and clock**
-- 07 Platform Layer: an SDL3 window behind `platform::`
+- 07 Platform Layer: an SDL3 window behind `platform::`. *Changed in ch07:* also moves memory, the executable's folder, file times and library loading behind `platform::`, and hands Ctrl+C to SDL's quit event. The window shows one solid color until chapter 08, since Wayland shows no window without a picture.
 - 08 OpenGL 4.6: glad, DSA, the debug callback, a clear color
 - 09 Fixed Timestep: the accumulator, the tick cap, ticks vs frames
 
@@ -35,7 +35,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 18 Collision: pixel-by-pixel stepping (Actor/Solid), with tests
 - 19 Debug Drawing: hitboxes, collision tiles
 - 20 Run and Jump: variable-height jump, gravity, maximum fall speed
-- 21 Pause, Step, Record, Loop
+- 21 Pause, Step, Record, Loop. *Changed in ch07:* also decides whether losing focus pauses the game ([plan §4.4](plan.md#44-platform-and-input)), since a paused game can't keep looping while you edit its code in another window.
 - 22 Ladders and Spikes: tile types, climbing, death and respawn
 
 **E. A stage**

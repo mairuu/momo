@@ -34,6 +34,13 @@ endif
 # it's loaded at (-fPIC), and it exports only what MOMO_API marks.
 LIB_CXXFLAGS := $(CXXFLAGS) -fPIC -fvisibility=hidden
 
+# SDL3 is installed on the system, and pkg-config prints the flags to compile
+# and link against it (chapter 07). Only the engine gets them: the game and
+# the host never call SDL themselves.
+SDL_CFLAGS := $(shell pkg-config --cflags sdl3)
+SDL_LIBS   := $(shell pkg-config --libs sdl3)
+ENGINE_CXXFLAGS := $(LIB_CXXFLAGS) $(SDL_CFLAGS)
+
 # For linking a shared library. --no-undefined makes calling a function that
 # no library exports a link error, instead of an error when it's loaded.
 LIB_LDFLAGS := $(LDFLAGS) -shared -Wl,--no-undefined
@@ -86,7 +93,7 @@ test: $(TEST_PROGS) compile_commands.json
 # rebuilds everything that uses it.
 
 $(OUT)/libmomo.so: $(ENGINE_OBJ) Makefile
-	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) -o $@
+	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) $(SDL_LIBS) -o $@
 
 # The running engine reloads game.so as soon as it changes (chapter 06), so
 # the new file has to appear all at once. The linker writes it under another
@@ -125,7 +132,7 @@ $(TEST_PROGS): $(OUT)/tests/%: $(OUT)/obj/tests/%.o $(OUT)/obj/tests/test.o $(OU
 # every file that includes it.
 $(OUT)/obj/engine/%.o: engine/%.cpp Makefile
 	@mkdir -p $(dir $@)
-	$(CXX) $(LIB_CXXFLAGS) -MMD -MP -c $< -o $@
+	$(CXX) $(ENGINE_CXXFLAGS) -MMD -MP -c $< -o $@
 
 $(OUT)/obj/game/%.o: game/%.cpp Makefile
 	@mkdir -p $(dir $@)
@@ -155,6 +162,7 @@ compdb_entry = echo '{ "directory": "$(CURDIR)", "file": "$(1)", "command": "$(C
 # every line except the last one ($!).
 compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC)
 	@{ echo '['; \
-	   { $(foreach f,$(ENGINE_SRC) $(GAME_SRC),$(call compdb_entry,$(f),$(LIB_CXXFLAGS))) \
+	   { $(foreach f,$(ENGINE_SRC),$(call compdb_entry,$(f),$(ENGINE_CXXFLAGS))) \
+	     $(foreach f,$(GAME_SRC),$(call compdb_entry,$(f),$(LIB_CXXFLAGS))) \
 	     $(foreach f,$(HOST_SRC) $(TESTS_SRC),$(call compdb_entry,$(f),$(CXXFLAGS))) } | sed '$$!s/$$/,/'; \
 	   echo ']'; } > $@
