@@ -8,9 +8,10 @@
 
 namespace platform {
 
-// The engine never reloads, so this can be a file-scope variable, like the
+// The engine never reloads, so these can be file-scope variables, like the
 // engine's own state in momo.cpp.
 static SDL_Window* window;
+static SDL_GLContext gl_context; // OpenGL's state for the window (chapter 08)
 
 // ---- The window -------------------------------------------------------------
 
@@ -24,12 +25,38 @@ bool init(const char* title, i32 width, i32 height)
         return false;
     }
 
+    // What kind of OpenGL context to make, which has to be said before the
+    // window opens: version 4.6, the core profile, which leaves out
+    // everything older versions deprecated, and a debug context, which
+    // explains its errors (chapter 08). momo draws back to front, in layer
+    // order, so it needs no depth buffer.
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 6);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+    SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
+    SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
+
     // Not resizable yet. Chapter 11 scales the picture to fit any size.
-    window = SDL_CreateWindow(title, width, height, 0);
+    window = SDL_CreateWindow(title, width, height, SDL_WINDOW_OPENGL);
     if (!window) {
         LOG_ERROR("can't open a window: %s", SDL_GetError());
         return false;
     }
+
+    // Making the context also makes it current: the one OpenGL calls on this
+    // thread go to. momo has one window, one context and one thread, so it
+    // stays current until shutdown.
+    gl_context = SDL_GL_CreateContext(window);
+    if (!gl_context) {
+        LOG_ERROR("can't make an OpenGL 4.6 context: %s", SDL_GetError());
+        return false;
+    }
+
+    // No vsync for now: swapping doesn't wait for the display, so the
+    // loop's sleep alone sets the pace, whichever video driver SDL picked.
+    // Left alone, vsync was off on Wayland and on under X11. Chapter 09
+    // decides vsync, along with the clock.
+    SDL_GL_SetSwapInterval(0);
 
     i32 version = SDL_GetVersion();
     LOG_INFO("SDL %d.%d.%d, video driver %s, window %dx%d", SDL_VERSIONNUM_MAJOR(version),
@@ -40,6 +67,8 @@ bool init(const char* title, i32 width, i32 height)
 
 void shutdown()
 {
+    SDL_GL_DestroyContext(gl_context);
+    gl_context = nullptr;
     SDL_DestroyWindow(window);
     window = nullptr;
     SDL_Quit();
@@ -63,19 +92,22 @@ bool handle_events()
 
 void present()
 {
-    // A Wayland compositor shows a window only once the window has given it
-    // a picture, so without this there'd be nothing to see. The surface is
-    // the window's picture in memory. SDL makes a new one when the window
-    // changes size, so it's asked for again every frame.
+    // OpenGL draws into a back buffer, a picture the screen doesn't show,
+    // while the window shows the front one. Swapping hands the finished back
+    // buffer to the display server and gives OpenGL a free one for the next
+    // frame, so you never see a frame half drawn.
     //
-    // A failure here isn't logged: it would repeat 60 times a second, and
-    // the window would only keep its last picture. Chapter 08 replaces all
-    // of this with OpenGL.
-    SDL_Surface* surface = SDL_GetWindowSurface(window);
-    if (!surface)
-        return;
-    SDL_FillSurfaceRect(surface, nullptr, SDL_MapSurfaceRGB(surface, 0x18, 0x20, 0x48));
-    SDL_UpdateWindowSurface(window);
+    // A failure isn't logged: it would repeat 60 times a second, and the
+    // window would only keep its last picture.
+    SDL_GL_SwapWindow(window);
+}
+
+GlFunction gl_function(const char* name)
+{
+    // SDL asks the driver, through EGL on Wayland or GLX on X11. Unlike the
+    // other functions here, a missing function isn't logged: glad asks for
+    // every function in OpenGL 4.6 and checks the version itself.
+    return SDL_GL_GetProcAddress(name);
 }
 
 // ---- Memory, files and libraries --------------------------------------------

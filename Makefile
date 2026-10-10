@@ -12,23 +12,29 @@ CONFIG ?= debug
 OUT    := build/$(CONFIG)
 
 CXX := g++
+CC  := gcc
 
 # ---- Flags ------------------------------------------------------------------
 
-# For every file in every build
+# For every C++ file in every build
 CXXFLAGS := -std=c++20 -Wall -Wextra -Wno-missing-field-initializers \
             -fno-exceptions -fno-rtti -Iengine
+
+# For every C file. Only vendored libraries are written in C (chapter 08).
+CFLAGS := -std=c11 -Wall -Wextra
 
 # -fno-sanitize-recover=all makes the sanitizers stop the program at the
 # first problem they find. UBSan would otherwise print a message and go on.
 ifeq ($(CONFIG),debug)
-    CXXFLAGS += -O0 -g3 -fsanitize=address,undefined -fno-sanitize-recover=all
-    LDFLAGS  += -fsanitize=address,undefined
+    CONFIG_FLAGS := -O0 -g3 -fsanitize=address,undefined -fno-sanitize-recover=all
+    LDFLAGS      += -fsanitize=address,undefined
 else ifeq ($(CONFIG),release)
-    CXXFLAGS += -O2 -g
+    CONFIG_FLAGS := -O2 -g
 else
     $(error CONFIG must be debug or release, not "$(CONFIG)")
 endif
+CXXFLAGS += $(CONFIG_FLAGS)
+CFLAGS   += $(CONFIG_FLAGS)
 
 # For code that goes into a shared library: it must run at whatever address
 # it's loaded at (-fPIC), and it exports only what MOMO_API marks.
@@ -39,7 +45,14 @@ LIB_CXXFLAGS := $(CXXFLAGS) -fPIC -fvisibility=hidden
 # the host never call SDL themselves.
 SDL_CFLAGS := $(shell pkg-config --cflags sdl3)
 SDL_LIBS   := $(shell pkg-config --libs sdl3)
-ENGINE_CXXFLAGS := $(LIB_CXXFLAGS) $(SDL_CFLAGS)
+
+# glad, the OpenGL loader (chapter 08), is C code that goes into libmomo.so,
+# so it's compiled like the engine's C++: -fPIC, and nothing exported. The
+# engine finds its header as <glad/gl.h>.
+GLAD_INCLUDE := -Ithird_party/glad/include
+GLAD_CFLAGS  := $(CFLAGS) -fPIC -fvisibility=hidden $(GLAD_INCLUDE)
+
+ENGINE_CXXFLAGS := $(LIB_CXXFLAGS) $(SDL_CFLAGS) $(GLAD_INCLUDE)
 
 # For linking a shared library. --no-undefined makes calling a function that
 # no library exports a link error, instead of an error when it's loaded.
@@ -62,6 +75,11 @@ HOST_SRC   := $(wildcard host/*.cpp)
 ENGINE_OBJ := $(ENGINE_SRC:%.cpp=$(OUT)/obj/%.o)
 GAME_OBJ   := $(GAME_SRC:%.cpp=$(OUT)/obj/%.o)
 HOST_OBJ   := $(HOST_SRC:%.cpp=$(OUT)/obj/%.o)
+
+# Vendored C code that's linked into the engine. Each library in third_party/
+# has its own layout, so its files are listed by name.
+GLAD_SRC := third_party/glad/src/gl.c
+GLAD_OBJ := $(GLAD_SRC:%.c=$(OUT)/obj/%.o)
 
 # tests/test.cpp is the runner. Every tests/<name>_test.cpp is a test program
 # of its own, built as build/<config>/tests/<name>_test.
@@ -92,8 +110,8 @@ test: $(TEST_PROGS) compile_commands.json
 # Every rule below also depends on the Makefile, so changing a flag here
 # rebuilds everything that uses it.
 
-$(OUT)/libmomo.so: $(ENGINE_OBJ) Makefile
-	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) $(SDL_LIBS) -o $@
+$(OUT)/libmomo.so: $(ENGINE_OBJ) $(GLAD_OBJ) Makefile
+	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) $(GLAD_OBJ) $(SDL_LIBS) -o $@
 
 # The running engine reloads game.so as soon as it changes (chapter 06), so
 # the new file has to appear all at once. The linker writes it under another
@@ -110,9 +128,9 @@ $(OUT)/momo: $(HOST_OBJ) $(OUT)/libmomo.so Makefile
 # only the object files that define something the program calls. Every
 # function in them can be called, MOMO_API or not. It lives in obj/, so
 # -lmomo never finds it instead of libmomo.so.
-$(OUT)/obj/libmomo.a: $(ENGINE_OBJ) Makefile
+$(OUT)/obj/libmomo.a: $(ENGINE_OBJ) $(GLAD_OBJ) Makefile
 	rm -f $@
-	ar rcs $@ $(ENGINE_OBJ)
+	ar rcs $@ $(ENGINE_OBJ) $(GLAD_OBJ)
 
 # One rule for every test program: its own object file, the runner, and
 # whatever it uses from the engine. "targets: pattern: prerequisites" is a
@@ -146,7 +164,12 @@ $(OUT)/obj/tests/%.o: tests/%.cpp Makefile
 	@mkdir -p $(dir $@)
 	$(CXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
--include $(ENGINE_OBJ:.o=.d) $(GAME_OBJ:.o=.d) $(HOST_OBJ:.o=.d) $(TESTS_OBJ:.o=.d)
+$(OUT)/obj/third_party/glad/%.o: third_party/glad/%.c Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(GLAD_CFLAGS) -MMD -MP -c $< -o $@
+
+-include $(ENGINE_OBJ:.o=.d) $(GAME_OBJ:.o=.d) $(HOST_OBJ:.o=.d) $(TESTS_OBJ:.o=.d) \
+         $(GLAD_OBJ:.o=.d)
 
 # ---- compile_commands.json --------------------------------------------------
 
@@ -154,15 +177,16 @@ $(OUT)/obj/tests/%.o: tests/%.cpp Makefile
 # the build does. It's rewritten, quietly, whenever this Makefile or a source
 # file changes. It holds absolute paths, so it's generated and git ignores it.
 
-# $(call compdb_entry,file,flags) is a shell command that prints one entry, a
-# JSON object on one line.
-compdb_entry = echo '{ "directory": "$(CURDIR)", "file": "$(1)", "command": "$(CXX) $(2) -c $(1)" }';
+# $(call compdb_entry,file,compiler and flags) is a shell command that prints
+# one entry, a JSON object on one line.
+compdb_entry = echo '{ "directory": "$(CURDIR)", "file": "$(1)", "command": "$(2) -c $(1)" }';
 
 # JSON allows no comma after the last entry, so sed adds a comma to the end of
 # every line except the last one ($!).
-compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC)
+compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC) $(GLAD_SRC)
 	@{ echo '['; \
-	   { $(foreach f,$(ENGINE_SRC),$(call compdb_entry,$(f),$(ENGINE_CXXFLAGS))) \
-	     $(foreach f,$(GAME_SRC),$(call compdb_entry,$(f),$(LIB_CXXFLAGS))) \
-	     $(foreach f,$(HOST_SRC) $(TESTS_SRC),$(call compdb_entry,$(f),$(CXXFLAGS))) } | sed '$$!s/$$/,/'; \
+	   { $(foreach f,$(ENGINE_SRC),$(call compdb_entry,$(f),$(CXX) $(ENGINE_CXXFLAGS))) \
+	     $(foreach f,$(GAME_SRC),$(call compdb_entry,$(f),$(CXX) $(LIB_CXXFLAGS))) \
+	     $(foreach f,$(HOST_SRC) $(TESTS_SRC),$(call compdb_entry,$(f),$(CXX) $(CXXFLAGS))) \
+	     $(foreach f,$(GLAD_SRC),$(call compdb_entry,$(f),$(CC) $(GLAD_CFLAGS))) } | sed '$$!s/$$/,/'; \
 	   echo ']'; } > $@

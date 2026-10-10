@@ -2,6 +2,7 @@
 // opens the window, runs the loop, and reloads game.so whenever it changes.
 #include "momo.h"
 #include "platform.h"
+#include "renderer.h"
 
 #include <stddef.h>
 
@@ -197,10 +198,12 @@ i32 run()
         return 1;
     LOG_INFO("loaded %.*s", engine.game_path.len, engine.game_path.data);
 
-    // The window opens before the game starts. From chapter 12 on, the
-    // game's init loads textures, and OpenGL needs a window before it can
-    // take them.
+    // The window and OpenGL start before the game does. From chapter 12 on,
+    // the game's init loads textures, and OpenGL needs a window before it
+    // can take them.
     if (!platform::init("momo", WINDOW_WIDTH, WINDOW_HEIGHT))
+        return 1;
+    if (!renderer::init())
         return 1;
 
     start_game();
@@ -211,6 +214,7 @@ i32 run()
         arena::reset(&engine.frame); // last frame's memory is free again
         if (engine.game_lib)
             engine.game.update(engine.state);
+        renderer::begin_frame();
         platform::present();
         engine.frame_index++;
 

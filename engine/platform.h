@@ -1,5 +1,6 @@
 // platform.h: everything the engine needs from the operating system: a
-// window and its events, memory, files and libraries. Chapter 07 explains it.
+// window, its events and its OpenGL context, memory, files and libraries.
+// Chapter 07 explains it, and chapter 08 adds OpenGL.
 #pragma once
 
 #include "base.h"
@@ -17,10 +18,11 @@ namespace platform {
 
 // ---- The window -------------------------------------------------------------
 
-// Starts SDL and opens a window width by height in size.
+// Starts SDL and opens a window width by height in size, with an OpenGL 4.6
+// context ready to draw into it (chapter 08).
 bool init(const char* title, i32 width, i32 height);
 
-// Closes the window and stops SDL.
+// Closes the OpenGL context and the window, and stops SDL.
 void shutdown();
 
 // Handles every event that arrived since the last call. Returns false once
@@ -28,9 +30,18 @@ void shutdown();
 // terminal.
 bool handle_events();
 
-// Shows the frame in the window. Until chapter 08 draws with OpenGL, the
-// frame is one solid color.
+// Shows the frame OpenGL drew in the window, and gives OpenGL another
+// picture to draw the next frame into.
 void present();
+
+// The type of an OpenGL function as SDL hands it out, before it's cast to
+// its real type. It's the same as glad's GLADapiproc, so gl_function can be
+// passed straight to gladLoadGL.
+using GlFunction = void (*)();
+
+// The address of the OpenGL function called name, such as "glClear", or
+// null if the driver doesn't have it. Works only after init.
+GlFunction gl_function(const char* name);
 
 // ---- Memory, files and libraries --------------------------------------------
 

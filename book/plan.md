@@ -177,6 +177,9 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | **256×240 virtual screen** (16×15 tiles of 16 px), scaled up by whole numbers, with black bars | One screen is one room. Pixel art stays crisp. |
 | Camera snapped to whole pixels | No shimmering. |
 | **Palette sprites for characters:** single-channel index textures plus palette rows chosen per draw. Tiles stay RGBA. Plus a hit flash. | Weapon colors, damage flashes and boss variants are just different rows. It's the graphics lesson most tied to this game. |
+| *Added in ch08:* `platform::` makes the OpenGL context and looks up OpenGL's functions. Only `renderer.cpp` includes glad and calls OpenGL. | Each module keeps to one library, so porting either one rewrites one file. |
+| *Added in ch08:* The debug callback logs each message at its severity, and `ASSERT`s on errors from the API. Notifications are off, messages are synchronous, and both builds ask for a debug context. | A wrong call is a bug in momo (§3.3). A shader that won't compile arrives as an error too, but from the shader compiler, and it's an expected failure. Mesa queues calls, so without synchronous messages an error is reported far from the call that caused it. |
+| *Added in ch08:* vsync is off until chapter 09 | Left to the video driver, it was off on Wayland and on under X11. The loop's sleep sets the pace until chapter 09 picks a clock. |
 
 ### 4.6 Numbers
 
@@ -260,6 +263,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
 | *Added in ch07:* Only the engine gets SDL's compile and link flags | The host and the game never call SDL. With `--no-undefined`, a game that tries fails to link. |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
+| *Added in ch08:* glad is generated once, by a pinned glad version with `--reproducible`, and its output is committed with a README that records the command. Vendored C code is compiled as C, and the flags that pick a build config apply to both languages. | Building momo needs no Python, and the same command always writes the same files. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
 
 ```

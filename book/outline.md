@@ -18,7 +18,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 **B. Window and clock**
 - 07 Platform Layer: an SDL3 window behind `platform::`. *Changed in ch07:* also moves memory, the executable's folder, file times and library loading behind `platform::`, and hands Ctrl+C to SDL's quit event. The window shows one solid color until chapter 08, since Wayland shows no window without a picture.
 - 08 OpenGL 4.6: glad, DSA, the debug callback, a clear color
-- 09 Fixed Timestep: the accumulator, the tick cap, ticks vs frames
+- 09 Fixed Timestep: the accumulator, the tick cap, ticks vs frames. *Changed in ch08:* also decides vsync, which chapter 08 turned off.
 
 **C. Drawing**
 - 10 Sprite Batch: colored rectangles, one draw call, layers
