@@ -11,7 +11,7 @@
 namespace renderer {
 
 // The color behind everything, as red, green, blue and alpha from 0 to 1.
-constexpr f32 CLEAR_COLOR[] = {0.06f, 0.22f, 0.25f, 1.0f}; // dark teal
+constexpr f32 CLEAR_COLOR[] = { 0.06f, 0.22f, 0.25f, 1.0f }; // dark teal
 
 // ---- Debug messages ---------------------------------------------------------
 

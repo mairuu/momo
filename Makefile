@@ -4,6 +4,9 @@
 #   make release    optimized build in build/release/
 #   make test       builds and runs the tests (chapter 03)
 #   make clean      deletes both builds
+#   make format     reformats momo's code the way .clang-format says
+#   make lint       fails if any file isn't formatted or clang-tidy finds
+#                   anything (.clang-tidy lists what it looks for)
 #
 # ASSERT stays on in both builds. Every build also writes
 # compile_commands.json, which tells editors how each file is compiled.
@@ -103,7 +106,30 @@ test: $(TEST_PROGS) compile_commands.json
 	 for t in $(TEST_PROGS); do $$t || failed="$$failed $$t"; done; \
 	 if [ -n "$$failed" ]; then echo "failed:$$failed"; exit 1; fi
 
-.PHONY: all release clean test
+# ---- Formatting and lint ----------------------------------------------------
+
+# Both tools come with Arch's clang package. To use another one, such as the
+# clang-format Neovim's mason installed: make lint CLANG_FORMAT=<path>
+CLANG_FORMAT ?= clang-format
+CLANG_TIDY   ?= clang-tidy
+
+# momo's own code. third_party/ keeps its authors' style.
+MOMO_SRC     := $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC)
+MOMO_HEADERS := $(wildcard engine/*.h game/*.h host/*.h tests/*.h)
+
+format:
+	$(CLANG_FORMAT) -i $(MOMO_SRC) $(MOMO_HEADERS)
+
+# clang-format first: --dry-run only reports, and --Werror makes a file that
+# would change fail. Then clang-tidy, which compiles each .cpp with its line
+# from compile_commands.json (-p .), and checks the headers it includes too.
+# Every finding fails. clangd shows the same findings in the editor, as
+# warnings, except for a few slow checks such as the analyzer's.
+lint: compile_commands.json
+	$(CLANG_FORMAT) --dry-run --Werror $(MOMO_SRC) $(MOMO_HEADERS)
+	$(CLANG_TIDY) -p . --quiet --warnings-as-errors='*' $(MOMO_SRC)
+
+.PHONY: all release clean test format lint
 
 # ---- Linking ----------------------------------------------------------------
 

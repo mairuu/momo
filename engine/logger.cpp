@@ -8,7 +8,7 @@ namespace logger {
 // What goes between "file:line: " and the message, indexed by LogLevel.
 // These are GCC's words, so editors that read compiler output read the log
 // the same way.
-static const char* const LEVEL_LABELS[] = {
+constexpr const char* LEVEL_LABELS[] = {
     "",          // LOG_LEVEL_INFO
     "warning: ", // LOG_LEVEL_WARN
     "error: ",   // LOG_LEVEL_ERROR

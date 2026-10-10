@@ -32,7 +32,7 @@ The book is append-only, and so is this plan. When a later chapter changes a dec
 
 **Every chapter has these parts:** Goal (what you'll see at the end) → Problem (why the engine needs this now) → Design (the options, the pick, and why) → Code (key excerpts with `file:line`, not whole files) → Run it (exact commands, what to look for) → Recap (updated module map) → Exercises (optional).
 
-**Before each commit, Claude checks:** both builds compile cleanly with `-Wall -Wextra`, `make test` passes, the game runs under the sanitizers, and from chapter 13 on, the `--capture` screenshots show what the chapter claims. Those screenshots go into the chapter.
+**Before each commit, Claude checks:** both builds compile cleanly with `-Wall -Wextra`, `make test` passes, `make lint` passes (*added after ch09*), the game runs under the sanitizers, and from chapter 13 on, the `--capture` screenshots show what the chapter claims. Those screenshots go into the chapter.
 
 **Chapters you implement:** Claude commits the spec, stubs and failing tests as `chNN-spec`. You implement, Claude reviews, and `chNN` is tagged on your code. Claude adjusts only what later chapters depend on.
 
@@ -73,6 +73,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | No string-literal pointers stored in game state | The text lived in the old `.so`'s memory. |
 | Store indices into `constexpr` tables, never pointers to them (`anim_id`, not `const Anim*`) | The tables live in the old `.so` too. |
 | All game state lives in memory the engine owns | It's the only memory that survives a reload. |
+
+*Added after ch09:* `make lint` catches globals in `game/` (§7). No clang-tidy check catches the other rules, so they're kept by reading the code.
 
 ### 3.3 Errors and strings
 
@@ -269,6 +271,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch07:* Only the engine gets SDL's compile and link flags | The host and the game never call SDL. With `--no-undefined`, a game that tries fails to link. |
 | Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | *Added in ch08:* glad is generated once, by a pinned glad version with `--reproducible`, and its output is committed with a README that records the command. Vendored C code is compiled as C, and the flags that pick a build config apply to both languages. | Building momo needs no Python, and the same command always writes the same files. |
+| *Added after ch09:* `.clang-format` describes the style the code already had: WebKit style, 100 columns. `make format` applies it. `.editorconfig` gives other editors the indents and line endings. | Neovim formats with clang-format, and its default style would have rewritten nearly every line. |
+| *Added after ch09:* `make lint` fails on unformatted code and on any clang-tidy finding. The checks are picked by hand: the analyzer, `bugprone`, §3.4's naming rules, and no globals in `game/` (§3.2). An exception gets a `NOLINT` comment that says why. | Lint helps only while it stays at zero findings. `cppcoreguidelines` and `modernize` are left out because they flag C-style casts, raw pointers and the lack of RAII, which §3.1 chose on purpose. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |
 
 ```

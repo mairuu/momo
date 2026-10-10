@@ -1,0 +1,41 @@
+# clang-tidy's checks for momo, picked by hand to match the dialect (plan §3).
+# The usual cppcoreguidelines and modernize sets are left out: they flag
+# C-style casts, raw pointers and the lack of RAII, which plan §3.1 chose on
+# purpose. game/.clang-tidy adds one check for game code.
+#
+# Two bugprone checks are off:
+# - easily-swappable-parameters flags any two neighboring parameters of the
+#   same type, such as clamp(x, lo, hi), which is most of momo's functions.
+# - signed-bitwise flags bit operations on signed integers, such as
+#   align & (align - 1) on an i64 size. Plan §3.4 keeps sizes signed, and
+#   C++20 defines what those operations do.
+Checks: >
+    -*,
+    clang-analyzer-*,
+    bugprone-*,
+    -bugprone-easily-swappable-parameters,
+    -bugprone-signed-bitwise,
+    readability-identifier-naming
+# Report findings in every header but the vendored ones. SDL's headers are
+# system headers, which clang-tidy skips anyway.
+HeaderFilterRegex: '.*'
+ExcludeHeaderFilterRegex: 'third_party/'
+CheckOptions:
+    # Plan §3.4: types are PascalCase, except the base types i8...f64.
+    readability-identifier-naming.StructCase: CamelCase
+    readability-identifier-naming.EnumCase: CamelCase
+    readability-identifier-naming.TypeAliasCase: CamelCase
+    readability-identifier-naming.TypeAliasIgnoredRegexp: '^[iuf](8|16|32|64)$'
+    readability-identifier-naming.TemplateParameterCase: CamelCase
+    # Functions, variables, members and namespaces are snake_case.
+    readability-identifier-naming.NamespaceCase: lower_case
+    readability-identifier-naming.FunctionCase: lower_case
+    readability-identifier-naming.VariableCase: lower_case
+    readability-identifier-naming.ParameterCase: lower_case
+    readability-identifier-naming.MemberCase: lower_case
+    # Constants, enum values and macros are UPPER_SNAKE. A constant is
+    # constexpr (§3.4), so a `const` global with an UPPER_SNAKE name is
+    # reported too.
+    readability-identifier-naming.ConstexprVariableCase: UPPER_CASE
+    readability-identifier-naming.EnumConstantCase: UPPER_CASE
+    readability-identifier-naming.MacroDefinitionCase: UPPER_CASE

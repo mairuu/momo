@@ -5,7 +5,7 @@ namespace timestep {
 
 void init(Timestep* step, i64 now_ns)
 {
-    *step = {.last_ns = now_ns};
+    *step = { .last_ns = now_ns };
 }
 
 i32 advance(Timestep* step, i64 now_ns)

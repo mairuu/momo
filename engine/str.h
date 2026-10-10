@@ -27,8 +27,7 @@ namespace str {
 // Formats like printf into memory pushed from arena, and returns the text.
 // It's followed by a 0, so result.data can go straight to a C function that
 // wants a C string. GCC checks the format against the arguments.
-MOMO_API Str fmt(Arena* arena, const char* format, ...)
-    __attribute__((format(printf, 2, 3)));
+MOMO_API Str fmt(Arena* arena, const char* format, ...) __attribute__((format(printf, 2, 3)));
 
 // The chars from start up to, but not including, end. Nothing is copied: the
 // result points into s.

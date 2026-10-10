@@ -1,0 +1,39 @@
+# momo's C++ style, written down after chapter 09 to match the code as it
+# was. WebKit is the closest built-in style: 4-space indents, braces on the
+# same line, `T* p`. Each option below changes something WebKit does.
+BasedOnStyle: WebKit
+
+# The code was written to about 100 columns. WebKit has no limit at all.
+ColumnLimit: 100
+
+# Every namespace ends with `} // namespace name`.
+FixNamespaceComments: true
+
+# A wrapped expression ends its line with the operator, not starts the next.
+BreakBeforeBinaryOperators: None
+
+# Wrapped arguments line up under the first one.
+AlignAfterOpenBracket: true
+
+# `template <typename T>` gets its own line.
+BreakTemplateDeclarations: Yes
+
+# Comments at the ends of consecutive lines line up.
+AlignTrailingComments: true
+
+# A function body never shares a line with its signature.
+AllowShortFunctionsOnASingleLine: None
+
+# Plan §3.1: `{ .kind = ENTITY_BAT, .hp = 1 }`, but `= {}`. A type name
+# touches its braces: `Str{}`.
+SpaceInEmptyBraces: Never
+SpaceBeforeCpp11BracedList: false
+
+# A macro's backslashes line up just past its longest line, not at column 100.
+AlignEscapedNewlines: Left
+
+# base.h is included first on purpose, so includes keep the order they're in.
+SortIncludes: Never
+
+# The values of consecutive #defines line up.
+AlignConsecutiveMacros: Consecutive

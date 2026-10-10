@@ -1,0 +1,4 @@
+# Plan §3.2: game.so reloads, so game code may have no globals. This check
+# finds them, but not static locals, which §3.2 bans too.
+InheritParentConfig: true
+Checks: cppcoreguidelines-avoid-non-const-global-variables

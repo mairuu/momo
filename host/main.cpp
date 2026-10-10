@@ -20,7 +20,9 @@ int main()
 // whose call stack passes through a function, file or library by that name.
 //
 // LeakSanitizer looks for this function by name, in the executable only.
-// extern "C" keeps the name unmangled.
+// extern "C" keeps the name unmangled. The name isn't ours to change, so
+// clang-tidy is told to skip it.
+// NOLINTNEXTLINE(bugprone-reserved-identifier, readability-identifier-naming)
 extern "C" const char* __lsan_default_suppressions()
 {
     return "leak:libSDL3.so\n";

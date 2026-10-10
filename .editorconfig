@@ -1,0 +1,28 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 4
+
+[Makefile]
+indent_style = tab
+
+# The book quotes real output and code exactly. Chapter 03 has a line of
+# test output that ends in a space, and several chapters quote Makefile
+# recipes and gdb listings that contain tabs.
+[*.md]
+trim_trailing_whitespace = false
+indent_style = unset
+indent_size = unset
+
+# Vendored code stays exactly as its authors wrote it. glad's gl.c has
+# trailing whitespace.
+[third_party/**]
+trim_trailing_whitespace = false
+insert_final_newline = unset
+indent_style = unset
+indent_size = unset

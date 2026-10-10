@@ -82,8 +82,7 @@ static bool init_memory()
 
 static void log_peak(const char* name, const Arena& arena)
 {
-    LOG_INFO("%-9s arena: at most %lld bytes used of %lld MB", name, arena.peak,
-             arena.size / MB);
+    LOG_INFO("%-9s arena: at most %lld bytes used of %lld MB", name, arena.peak, arena.size / MB);
 }
 
 static void shutdown_memory()
@@ -121,8 +120,7 @@ static bool load_game()
     if (!engine.game_lib)
         return false; // already logged, like every platform:: failure
 
-    auto* get_game_api =
-        (GameApiFn*)platform::find_function(engine.game_lib, "momo_game_api");
+    auto* get_game_api = (GameApiFn*)platform::find_function(engine.game_lib, "momo_game_api");
     if (!get_game_api) {
         platform::close_library(engine.game_lib);
         engine.game_lib = nullptr;

@@ -25,7 +25,7 @@ static void fmt_formats_into_the_arena()
     Str s = str::fmt(&a, "%d bats", 12);
     CHECK(str::eq(s, STR("12 bats")));
     CHECK((u8*)s.data == memory);
-    CHECK_EQ(s.data[s.len], 0); // the 0 after the text
+    CHECK(s.data[s.len] == 0); // the 0 after the text
     CHECK_EQ(a.used, s.len + 1);
 }
 

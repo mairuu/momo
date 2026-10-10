@@ -40,8 +40,7 @@ i32 report();
 // Marks the running test as failed and prints why, starting with file:line.
 // CHECK and CHECK_EQ call it. In gdb, `break test::fail` stops at every
 // failed check.
-void fail(const char* file, i32 line, const char* fmt, ...)
-    __attribute__((format(printf, 3, 4)));
+void fail(const char* file, i32 line, const char* fmt, ...) __attribute__((format(printf, 3, 4)));
 
 } // namespace test
 
@@ -50,24 +49,23 @@ void fail(const char* file, i32 line, const char* fmt, ...)
 
 // If cond is false, the test fails and returns: the rest of it is skipped,
 // and the runner moves on to the next test.
-#define CHECK(cond)                                                           \
-    do {                                                                      \
-        if (!(cond)) {                                                        \
-            test::fail(__FILE__, __LINE__, "CHECK(%s) failed", #cond);        \
-            return;                                                           \
-        }                                                                     \
+#define CHECK(cond)                                                    \
+    do {                                                               \
+        if (!(cond)) {                                                 \
+            test::fail(__FILE__, __LINE__, "CHECK(%s) failed", #cond); \
+            return;                                                    \
+        }                                                              \
     } while (0)
 
 // Like CHECK(a == b), but a failure also prints both values. For integers,
 // enums and bools: each side is evaluated once and stored in an i64.
-#define CHECK_EQ(a, b)                                                        \
-    do {                                                                      \
-        i64 check_a_ = (a);                                                   \
-        i64 check_b_ = (b);                                                   \
-        if (check_a_ != check_b_) {                                           \
-            test::fail(__FILE__, __LINE__,                                    \
-                       "CHECK_EQ(%s, %s) failed: %lld != %lld", #a, #b,       \
-                       check_a_, check_b_);                                   \
-            return;                                                           \
-        }                                                                     \
+#define CHECK_EQ(a, b)                                                                      \
+    do {                                                                                    \
+        i64 check_a_ = (a);                                                                 \
+        i64 check_b_ = (b);                                                                 \
+        if (check_a_ != check_b_) {                                                         \
+            test::fail(__FILE__, __LINE__, "CHECK_EQ(%s, %s) failed: %lld != %lld", #a, #b, \
+                       check_a_, check_b_);                                                 \
+            return;                                                                         \
+        }                                                                                   \
     } while (0)

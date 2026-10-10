@@ -15,12 +15,12 @@
 // long long on Windows. printf's %lld and %llu then match them on every
 // platform, and GCC's format check catches a %ld that would only be right on
 // Linux (chapter 05).
-using i8  = int8_t;
+using i8 = int8_t;
 using i16 = int16_t;
 using i32 = int32_t;
 using i64 = long long;
 
-using u8  = uint8_t;
+using u8 = uint8_t;
 using u16 = uint16_t;
 using u32 = uint32_t;
 using u64 = unsigned long long;
@@ -55,13 +55,12 @@ constexpr i64 MB = 1024 * KB;
 // the function that failed with all its variables intact.
 //
 // __builtin_trap is GCC and Clang. A Windows port would use __debugbreak().
-#define ASSERT(cond)                                                          \
-    do {                                                                      \
-        if (!(cond)) {                                                        \
-            fprintf(stderr, "%s:%d: ASSERT(%s) failed\n",                     \
-                    __FILE__, __LINE__, #cond);                               \
-            __builtin_trap();                                                 \
-        }                                                                     \
+#define ASSERT(cond)                                                                  \
+    do {                                                                              \
+        if (!(cond)) {                                                                \
+            fprintf(stderr, "%s:%d: ASSERT(%s) failed\n", __FILE__, __LINE__, #cond); \
+            __builtin_trap();                                                         \
+        }                                                                             \
     } while (0)
 
 // ---- Arrays ---------------------------------------------------------------

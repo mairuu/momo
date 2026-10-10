@@ -63,7 +63,7 @@ static void a_thousand_frames_a_second_still_run_60_ticks()
     timestep::init(&step, START_NS);
     i32 ticks = 0;
     for (i32 frame = 1; frame <= 1000; frame++) {
-        i32 frame_ticks = timestep::advance(&step, START_NS + frame * 1'000'000);
+        i32 frame_ticks = timestep::advance(&step, START_NS + (i64)frame * 1'000'000);
         CHECK(frame_ticks <= 1);
         ticks += frame_ticks;
     }
