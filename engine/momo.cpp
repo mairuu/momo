@@ -48,10 +48,10 @@ constexpr i64 STAGE_SIZE = 32 * MB;
 constexpr i64 FRAME_SIZE = 8 * MB;
 constexpr i64 ENGINE_SIZE = 8 * MB;
 
-// The window: three times the 256x240 screen the game will draw, which
+// The window: three times the 256x240 screen the game draws on, which
 // chapter 11 scales to fit whatever size the window is.
-constexpr i32 WINDOW_WIDTH = 3 * 256;
-constexpr i32 WINDOW_HEIGHT = 3 * 240;
+constexpr i32 WINDOW_WIDTH = 3 * SCREEN_WIDTH;
+constexpr i32 WINDOW_HEIGHT = 3 * SCREEN_HEIGHT;
 
 // Reserves one block for all four arenas. The OS hands out zeroed pages,
 // and only gives a page physical memory when it's first touched, so
@@ -207,7 +207,7 @@ i32 run()
     // can take them.
     if (!platform::init("momo", WINDOW_WIDTH, WINDOW_HEIGHT))
         return 1;
-    if (!renderer::init())
+    if (!renderer::init(&engine.arena))
         return 1;
 
     start_game();
@@ -232,7 +232,11 @@ i32 run()
             engine.tick_count += ticks;
         }
 
+        // The game draws its picture of where the ticks left it.
         renderer::begin_frame();
+        if (engine.game_lib)
+            engine.game.render(engine.state);
+        renderer::end_frame();
         platform::present(); // with vsync, waits for the display
         engine.frame_count++;
     }
@@ -243,6 +247,7 @@ i32 run()
         engine.game.shutdown(engine.state);
         unload_game();
     }
+    renderer::shutdown();
     platform::shutdown();
 
     LOG_INFO("quit after %.2f s: %d frames, %d ticks", seconds, engine.frame_count,

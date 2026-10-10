@@ -7,6 +7,7 @@
 #include "base.h"
 #include "arena.h"
 #include "logger.h"
+#include "renderer.h"
 #include "str.h"
 
 // ---- The engine (libmomo.so) ------------------------------------------------
@@ -58,6 +59,13 @@ struct GameApi {
     // times a second, however many frames a second the display shows
     // (chapter 09), so it takes no time step: every tick is the same length.
     void (*update)(GameState* state);
+
+    // Draws the game, with renderer::draw_rect. The engine calls it once
+    // per frame, after the frame's ticks, which may be none: then it draws
+    // the same picture again. The state is const, so drawing can't change
+    // the game, and the game plays the same however many frames there are
+    // (chapter 10).
+    void (*render)(const GameState* state);
 
     void (*shutdown)(GameState* state);
 };

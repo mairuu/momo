@@ -21,7 +21,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 09 Fixed Timestep: the accumulator, the tick cap, ticks vs frames. *Changed in ch08:* also decides vsync, which chapter 08 turned off.
 
 **C. Drawing**
-- 10 Sprite Batch: colored rectangles, one draw call, layers
+- 10 Sprite Batch: colored rectangles, one draw call, layers. *Changed in ch10:* also gives the game its `render`, and compiles the first shaders, logging why one doesn't compile.
 - 11 Virtual Screen: 256×240, whole-number scaling, black bars
 - 12 Textures: stb_image; an 8×8 font in code as the first texture
 - 13 Debug Text and Capture: the overlay, `--capture`

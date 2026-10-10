@@ -131,6 +131,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch06:* `game.so` is linked under a temporary name and renamed into place | The linker writes the file over many milliseconds, and without the rename the engine saw it half-written on every rebuild. A rename swaps in the whole file at once. |
 | *Added in ch06:* The engine declares `GameState` but never defines it | It passes the game's state along without being able to depend on what's inside. |
 | *Added in ch06:* Only `game.so` reloads. A change to the engine or to `momo.h` needs a restart. | The running engine can't be swapped, and both sides must agree on `momo.h`. |
+| *Added in ch10:* The game draws only in `render`, which runs once per frame after the ticks and gets a `const GameState*`. Drawing outside it is an `ASSERT`. | A frame runs any number of ticks, so drawing in `update` would draw some frames twice and others not at all. A `const` state means drawing can't change the game, so it plays the same at any frame rate (§4.3). |
 
 ### 4.2 Memory
 
@@ -187,13 +188,19 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch08:* The debug callback logs each message at its severity, and `ASSERT`s on errors from the API. Notifications are off, messages are synchronous, and both builds ask for a debug context. | A wrong call is a bug in momo (§3.3). A shader that won't compile arrives as an error too, but from the shader compiler, and it's an expected failure. Mesa queues calls, so without synchronous messages an error is reported far from the call that caused it. |
 | *Added in ch08:* vsync is off until chapter 09. **Changed in ch09** (next row). | Left to the video driver, it was off on Wayland and on under X11. The loop's sleep sets the pace until chapter 09 picks a clock. |
 | *Changed in ch09:* vsync is on, and nothing sleeps. Without vsync, momo logs a warning and draws as many frames as it can. | The fixed timestep keeps the game's speed whatever the frame rate, so the display can set it. On a display that's a multiple of 60 Hz, every tick stays up for the same number of refreshes. The CPU waits in the swap: 2% of a core, against 114% with vsync off. |
+| *Added in ch10:* Each rectangle is one **instance**: 20 bytes of position, size and color, from which the vertex shader makes four corners. A frame's rectangles go to the GPU in one buffer and are drawn by one call. | Measured with 3,877 rectangles a frame: 0.11 ms in one call, 0.27 ms in one call each, 1.6 ms setting uniforms before each call. Four vertices per rectangle would repeat each rectangle's data four times. |
+| *Added in ch10:* The engine draws up to 8 layers, numbered back to front, and gives the numbers no meaning. The game names them, with an enum of its own. | What a layer is for is the game's decision (§1), and the engine's sort needs only the count. A wrong number is an `ASSERT` instead of a compile error. |
+| *Added in ch10:* When the frame ends, a counting sort puts its rectangles in layer order, keeping call order inside each layer. A frame holds at most 4,096 rectangles, and more is an `ASSERT`. The batch and its sort are a module that never calls OpenGL. | With eight layers, counting beats comparing, and the sort is stable. A batch that drew whenever it filled up would break layer order, and a depth buffer can't order see-through pixels. Tests check the order with no GPU. |
+| *Added in ch10:* Colors are four bytes, RGBA, with alpha blending on | Shadows, text backdrops and hitbox overlays need see-through rectangles. A zeroed color draws nothing, which is ZII. |
+| *Added in ch10:* Shaders are strings in `renderer.cpp`. momo checks whether each one compiled and logs the compiler's messages itself, and turns off the shader compiler's debug messages. | Compile status works on every driver, debug context or not. Mesa also sent each failure to the debug callback, so it was logged twice. |
 
 ### 4.6 Numbers
 
 | Decision | Why |
 |---|---|
 | Simulation uses **fixed-point** `Fx` / `Fx2`: `i32` counting 1/256ths of a pixel (24.8) | Exact and deterministic, which makes record-and-replay possible. 1/256 matches NES subpixels, so MegaMan-style numbers (walking ≈ 1.375 px per frame) translate directly. No float jitter at tile edges. |
-| Rendering uses float `V2` and matrices | That's what the GPU wants. Positions round to whole pixels at draw time. |
+| Rendering uses float `V2` and matrices. **Changed in ch10** (next row). | That's what the GPU wants. Positions round to whole pixels at draw time. |
+| *Changed in ch10:* The renderer takes whole pixels as `i32`, on the 256×240 screen with y pointing down. Floats exist only on the GPU, and the vertex shader maps pixels to clip space with the screen's size instead of a matrix. | Pixel art is drawn at whole pixels, so the type says so, and the rounding happens once, where the game turns positions into pixels. A screen with no zoom or rotation needs two numbers, not a 4×4 matrix. |
 
 ### 4.7 Entities
 
