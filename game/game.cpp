@@ -39,6 +39,7 @@ constexpr Color FLOOR_COLORS[] = { renderer::rgb(0x7c4a1e), renderer::rgb(0x5c36
 constexpr Color PILLAR_COLOR = renderer::rgb(0x8a8a8a);
 constexpr Color BAT_COLOR = renderer::rgb(0x8e44ad);
 constexpr Color WING_COLOR = renderer::rgb(0x5b2c6f);
+constexpr Color EYE_COLOR = renderer::rgb(0xf4d03f);
 constexpr Color SHADOW_COLOR = { .r = 0, .g = 0, .b = 0, .a = 96 }; // black, partly see-through
 
 void init(GameState* state)
@@ -80,8 +81,9 @@ void render(const GameState* state)
     Rect pillar = { .x = 120, .y = 96, .w = TILE_SIZE, .h = FLOOR_Y - 96 };
     renderer::draw_rect(pillar, PILLAR_COLOR, LAYER_FOREGROUND);
 
-    // The bat's shadow on the floor, then the bat: a body, and two wings
-    // that flap up and down every 8 ticks.
+    // The bat's shadow on the floor, then the bat: a body, two wings that
+    // flap up and down every 8 ticks, and two eyes of one pixel each, the
+    // smallest thing the screen can show.
     i32 x = state->bat_x;
     renderer::draw_rect({ .x = x + 2, .y = FLOOR_Y, .w = 12, .h = 3 }, SHADOW_COLOR,
                         LAYER_ENTITIES);
@@ -89,6 +91,8 @@ void render(const GameState* state)
     renderer::draw_rect({ .x = x, .y = wing_y, .w = 6, .h = 5 }, WING_COLOR, LAYER_ENTITIES);
     renderer::draw_rect({ .x = x + 10, .y = wing_y, .w = 6, .h = 5 }, WING_COLOR, LAYER_ENTITIES);
     renderer::draw_rect({ .x = x + 4, .y = BAT_Y + 3, .w = 8, .h = 9 }, BAT_COLOR, LAYER_ENTITIES);
+    renderer::draw_rect({ .x = x + 5, .y = BAT_Y + 5, .w = 1, .h = 1 }, EYE_COLOR, LAYER_ENTITIES);
+    renderer::draw_rect({ .x = x + 10, .y = BAT_Y + 5, .w = 1, .h = 1 }, EYE_COLOR, LAYER_ENTITIES);
 }
 
 void shutdown(GameState* state)

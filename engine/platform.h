@@ -1,7 +1,7 @@
 // platform.h: everything the engine needs from the operating system: a
 // window, its events and its OpenGL context, memory, files, libraries and a
-// clock. Chapter 07 explains it, chapter 08 adds OpenGL, and chapter 09 the
-// clock and vsync.
+// clock. Chapter 07 explains it, chapter 08 adds OpenGL, chapter 09 the clock
+// and vsync, and chapter 11 window sizes and display scales.
 #pragma once
 
 #include "base.h"
@@ -20,7 +20,14 @@ namespace platform {
 // ---- The window -------------------------------------------------------------
 
 // Starts SDL and opens a window width by height in size, with an OpenGL 4.6
-// context ready to draw into it (chapter 08), and vsync on (chapter 09).
+// context ready to draw into it (chapter 08), and vsync on (chapter 09). The
+// window can be resized, and the window manager may give it another size
+// right away.
+//
+// The size is in the display server's units, which aren't always pixels
+// (chapter 11). On Wayland they're points: a display with a scale of 2 shows
+// each point as 2x2 pixels, and the window gets every one of those pixels to
+// draw into. X11 has no points, so there the size is in pixels.
 bool init(const char* title, i32 width, i32 height);
 
 // Closes the OpenGL context and the window, and stops SDL.
@@ -30,6 +37,11 @@ void shutdown();
 // momo should quit: the window was closed, or Ctrl+C was pressed in the
 // terminal.
 bool handle_events();
+
+// The window's size in pixels right now: what OpenGL draws into, and what
+// the renderer fits the screen into. It changes whenever the window is
+// resized or moves to a display with another scale.
+void window_size_in_pixels(i32* width, i32* height);
 
 // Shows the frame OpenGL drew in the window, and gives OpenGL another
 // picture to draw the next frame into. With vsync, it first waits until the

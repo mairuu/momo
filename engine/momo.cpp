@@ -48,8 +48,11 @@ constexpr i64 STAGE_SIZE = 32 * MB;
 constexpr i64 FRAME_SIZE = 8 * MB;
 constexpr i64 ENGINE_SIZE = 8 * MB;
 
-// The window: three times the 256x240 screen the game draws on, which
-// chapter 11 scales to fit whatever size the window is.
+// The size the window asks for when it opens: three times the 256x240
+// screen, in the display server's units. That's points on Wayland, so 6 times
+// the screen in pixels on a display with a scale of 2, and pixels on X11. A
+// tiling window manager picks a size of its own, and the renderer fits the
+// screen into whatever size the window has (chapter 11).
 constexpr i32 WINDOW_WIDTH = 3 * SCREEN_WIDTH;
 constexpr i32 WINDOW_HEIGHT = 3 * SCREEN_HEIGHT;
 

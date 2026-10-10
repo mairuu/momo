@@ -1,5 +1,6 @@
 // renderer.h: everything momo draws goes through here, on OpenGL 4.6.
-// Chapter 08 explains how it starts, and chapter 10 how it draws.
+// Chapter 08 explains how it starts, chapter 10 how it draws, and chapter 11
+// how the picture fits the window.
 #pragma once
 
 #include "base.h"
@@ -12,8 +13,9 @@
 
 // The game draws on a screen 256 pixels wide and 240 high, the NES's: 16 by
 // 15 tiles of 16 pixels. x counts from the left edge and y from the top, so
-// y grows downward. The window is three times that size, so every screen
-// pixel is 3x3 of the window's. Chapter 11 fits the screen to any window.
+// y grows downward. The screen is a picture of its own, always this size,
+// which the renderer scales up by a whole number to fit the window, with
+// black bars around it (chapter 11). The game never sees the window's size.
 constexpr i32 SCREEN_WIDTH = 256;
 constexpr i32 SCREEN_HEIGHT = 240;
 
@@ -72,10 +74,12 @@ bool init(Arena* arena);
 // there's still a context.
 void shutdown();
 
-// Starts a frame: clears the window to one color and empties the batch.
+// Starts a frame: clears the screen to one color and empties the batch.
 void begin_frame();
 
-// Draws everything drawn since begin_frame, in one draw call.
+// Draws everything drawn since begin_frame on the screen, in one draw call,
+// then copies the screen into the window at the largest whole number scale
+// that fits, with black around it.
 void end_frame();
 
 } // namespace renderer

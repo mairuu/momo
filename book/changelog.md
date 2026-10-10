@@ -43,3 +43,7 @@ Every change to [plan.md](plan.md) and [outline.md](outline.md), oldest first. T
 | ch10 | momo checks shader compile status itself, and turns off the shader compiler's debug messages | Chapter 08 found that Mesa also reports a failed compile through the debug callback. Writing the shaders confirmed it: each error was logged twice. |
 | ch10 | The renderer takes whole pixels as `i32`, with no matrix, replacing §4.6's "float `V2` and matrices" | Every position the game draws is a whole pixel on a screen with no zoom or rotation, so the screen's size is all the vertex shader needs. |
 | ch10 | The outline says chapter 10 also gives the game its `render` and compiles the first shaders | Both arrived with the first drawing. |
+| ch11 | Added the virtual screen: a 256×240 texture the game draws on, copied into the window at the largest whole-number scale that fits, with black around it. The screen's size stays in the engine. | Plan §4.5 only said "scaled up by whole numbers, with black bars". |
+| ch11 | The window asks for every pixel it covers, and the scale is chosen in pixels | A capture of chapter 10's window showed the compositor blurring every edge, even at scale 2. |
+| ch11 | The window is resizable, and the renderer reads its size every frame instead of handling resize events | Plan §4.4 said the engine handles resizing, but not how. |
+| ch11 | The outline says chapter 11 also made the window resizable and asked for every pixel | Both arrived with the virtual screen. |

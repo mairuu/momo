@@ -1,9 +1,11 @@
 // renderer.cpp: momo's drawing, on OpenGL 4.6. Chapter 08 explains how it
-// starts OpenGL, and chapter 10 how it draws.
+// starts OpenGL, chapter 10 how it draws, and chapter 11 how the screen fits
+// the window.
 #include "renderer.h"
 #include "batch.h"
 #include "logger.h"
 #include "platform.h"
+#include "screen.h"
 
 // glad declares every OpenGL 4.6 function and constant. Each function is a
 // pointer that gladLoadGL fills in, under a macro with the function's name:
@@ -14,8 +16,10 @@
 
 namespace renderer {
 
-// The color behind everything, as red, green, blue and alpha from 0 to 1.
+// The color behind everything on the screen, as red, green, blue and alpha
+// from 0 to 1, and the color of the bars around the screen.
 constexpr f32 CLEAR_COLOR[] = { 0.06f, 0.22f, 0.25f, 1.0f }; // dark teal
+constexpr f32 BAR_COLOR[] = { 0.0f, 0.0f, 0.0f, 1.0f };      // black
 
 // ---- Shaders ----------------------------------------------------------------
 
@@ -75,12 +79,15 @@ constexpr u32 COLOR_ATTRIB = 1;
 
 // The engine never reloads, so these can be file-scope variables, like
 // platform.cpp's window.
-static u32 program;          // the two shaders, linked together
-static u32 rect_buffer;      // the frame's rectangles, on the GPU
-static u32 vertex_array;     // how the vertex shader reads rect_buffer
-static Batch batch;          // the frame's rectangles, as the game drew them
-static RectInstance* sorted; // the same rectangles, in drawing order
-static bool in_frame;        // between begin_frame and end_frame
+static u32 program;            // the two shaders, linked together
+static u32 rect_buffer;        // the frame's rectangles, on the GPU
+static u32 vertex_array;       // how the vertex shader reads rect_buffer
+static Batch batch;            // the frame's rectangles, as the game drew them
+static RectInstance* sorted;   // the same rectangles, in drawing order
+static bool in_frame;          // between begin_frame and end_frame
+static u32 screen_texture;     // the 256x240 screen, which the game draws on
+static u32 screen_framebuffer; // what lets OpenGL draw into screen_texture
+static i32 screen_scale;       // the scale last logged, 0 before the first frame
 
 // ---- Debug messages ---------------------------------------------------------
 
@@ -285,14 +292,30 @@ bool init(Arena* arena)
     // * (1 - alpha).
     glEnable(GL_BLEND);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+    // The screen: a texture of 256x240 RGBA pixels, with one level (no
+    // mipmaps), and a framebuffer that makes it something OpenGL can draw
+    // into instead of the window. RGBA8 is a format every OpenGL 4.6 driver
+    // must be able to draw into, so if the framebuffer isn't complete, momo
+    // made it wrongly.
+    glCreateTextures(GL_TEXTURE_2D, 1, &screen_texture);
+    glTextureStorage2D(screen_texture, 1, GL_RGBA8, SCREEN_WIDTH, SCREEN_HEIGHT);
+    glCreateFramebuffers(1, &screen_framebuffer);
+    glNamedFramebufferTexture(screen_framebuffer, GL_COLOR_ATTACHMENT0, screen_texture, 0);
+    ASSERT(glCheckNamedFramebufferStatus(screen_framebuffer, GL_FRAMEBUFFER) ==
+           GL_FRAMEBUFFER_COMPLETE);
     return true;
 }
 
 void shutdown()
 {
+    glDeleteFramebuffers(1, &screen_framebuffer);
+    glDeleteTextures(1, &screen_texture);
     glDeleteVertexArrays(1, &vertex_array);
     glDeleteBuffers(1, &rect_buffer);
     glDeleteProgram(program);
+    screen_framebuffer = 0;
+    screen_texture = 0;
     vertex_array = 0;
     rect_buffer = 0;
     program = 0;
@@ -306,8 +329,8 @@ void begin_frame()
 
     // Direct state access (DSA): the call names the framebuffer it clears,
     // and takes the color, instead of clearing whatever is bound with
-    // whatever glClearColor last set. Framebuffer 0 is the window's.
-    glClearNamedFramebufferfv(0, GL_COLOR, 0, CLEAR_COLOR);
+    // whatever glClearColor last set.
+    glClearNamedFramebufferfv(screen_framebuffer, GL_COLOR, 0, CLEAR_COLOR);
 }
 
 void draw_rect(Rect rect, Color color, i32 layer)
@@ -318,22 +341,61 @@ void draw_rect(Rect rect, Color color, i32 layer)
     batch::add(&batch, rect, color, layer);
 }
 
+// Draws the batch on the screen, in one call.
+static void draw_batch()
+{
+    batch::sort(batch, sorted);
+    glNamedBufferSubData(rect_buffer, 0, batch.count * (i64)sizeof(RectInstance), sorted);
+
+    // Drawing has no DSA version: it draws into whatever framebuffer is
+    // bound, with whatever program and vertex array are bound. They're
+    // bound right here, so the draw never depends on what some other code
+    // left bound. The viewport is where in the framebuffer clip space's -1
+    // to 1 lands, and it's set here too: it starts out as the window's size,
+    // and a framebuffer doesn't bring its own.
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, screen_framebuffer);
+    glViewport(0, 0, SCREEN_WIDTH, SCREEN_HEIGHT);
+    glUseProgram(program);
+    glBindVertexArray(vertex_array);
+    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, batch.count);
+}
+
+// Copies the screen into the window, scaled up by a whole number, and fills
+// the rest of the window with black.
+static void present_screen()
+{
+    i32 window_width = 0;
+    i32 window_height = 0;
+    platform::window_size_in_pixels(&window_width, &window_height);
+    ScreenFit fit = screen::fit(window_width, window_height);
+    if (fit.scale != screen_scale) {
+        LOG_INFO("the screen at %dx: %dx%d pixels, in a window of %dx%d", fit.scale, fit.rect.w,
+                 fit.rect.h, window_width, window_height);
+        screen_scale = fit.scale;
+    }
+
+    // Framebuffer 0 is the window's. A blit copies a rectangle of pixels
+    // from one framebuffer to another, scaling it to the size of the
+    // rectangle it lands in. GL_NEAREST gives each window pixel the color of
+    // the screen pixel its center falls in, so every screen pixel comes out
+    // as a square of exactly scale x scale pixels, all of one color.
+    //
+    // OpenGL counts a framebuffer's rows from the bottom, so the bottom
+    // edge is however far the screen's bottom is from the window's.
+    i32 bottom = window_height - (fit.rect.y + fit.rect.h);
+    glClearNamedFramebufferfv(0, GL_COLOR, 0, BAR_COLOR);
+    glBlitNamedFramebuffer(screen_framebuffer, 0, 0, 0, SCREEN_WIDTH, SCREEN_HEIGHT, fit.rect.x,
+                           bottom, fit.rect.x + fit.rect.w, bottom + fit.rect.h,
+                           GL_COLOR_BUFFER_BIT, GL_NEAREST);
+}
+
 void end_frame()
 {
     ASSERT(in_frame);
     in_frame = false;
-    if (batch.count == 0)
-        return;
-
-    batch::sort(batch, sorted);
-    glNamedBufferSubData(rect_buffer, 0, batch.count * (i64)sizeof(RectInstance), sorted);
-
-    // Drawing has no DSA version: it uses whatever program and vertex array
-    // are bound. They're bound right here, so the draw never depends on
-    // what some other code left bound.
-    glUseProgram(program);
-    glBindVertexArray(vertex_array);
-    glDrawArraysInstanced(GL_TRIANGLE_STRIP, 0, 4, batch.count);
+    if (batch.count > 0)
+        draw_batch();
+    present_screen();
 }
 
 } // namespace renderer

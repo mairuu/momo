@@ -36,8 +36,13 @@ bool init(const char* title, i32 width, i32 height)
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_DEBUG_FLAG);
     SDL_GL_SetAttribute(SDL_GL_DEPTH_SIZE, 0);
 
-    // Not resizable yet. Chapter 11 scales the picture to fit any size.
-    window = SDL_CreateWindow(title, width, height, SDL_WINDOW_OPENGL);
+    // Resizable: the renderer fits its picture to any size (chapter 11).
+    // HIGH_PIXEL_DENSITY asks for every pixel the window covers. Without it,
+    // a display with a scale of 2 gets a window with a quarter of its
+    // pixels, which the compositor stretches, and blurs at every edge.
+    SDL_WindowFlags flags =
+        SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY;
+    window = SDL_CreateWindow(title, width, height, flags);
     if (!window) {
         LOG_ERROR("can't open a window: %s", SDL_GetError());
         return false;
@@ -67,10 +72,22 @@ bool init(const char* title, i32 width, i32 height)
     if (mode)
         refresh_rate = mode->refresh_rate;
 
+    // The window's size as the window manager gave it, which a tiling one
+    // decides for itself, then in pixels. The display scale is how many
+    // pixels the display shows for each point (chapter 11).
+    i32 window_width = 0;
+    i32 window_height = 0;
+    i32 pixel_width = 0;
+    i32 pixel_height = 0;
+    SDL_GetWindowSize(window, &window_width, &window_height);
+    SDL_GetWindowSizeInPixels(window, &pixel_width, &pixel_height);
+
     i32 version = SDL_GetVersion();
-    LOG_INFO("SDL %d.%d.%d, video driver %s, window %dx%d, display %.0f Hz",
+    LOG_INFO("SDL %d.%d.%d, video driver %s, window %dx%d, %dx%d pixels, display scale %.3g, "
+             "%.0f Hz",
              SDL_VERSIONNUM_MAJOR(version), SDL_VERSIONNUM_MINOR(version),
-             SDL_VERSIONNUM_MICRO(version), SDL_GetCurrentVideoDriver(), width, height,
+             SDL_VERSIONNUM_MICRO(version), SDL_GetCurrentVideoDriver(), window_width,
+             window_height, pixel_width, pixel_height, SDL_GetWindowDisplayScale(window),
              refresh_rate);
     return true;
 }
@@ -89,7 +106,9 @@ bool handle_events()
     // SDL collects events in a queue as they happen, and SDL_PollEvent takes
     // them out one at a time until the queue is empty. Closing the window
     // and Ctrl+C both end up as SDL_EVENT_QUIT. Every other event is
-    // ignored for now.
+    // ignored for now. That includes resizing: SDL keeps the window's size
+    // up to date as it handles the events, and the renderer asks for it
+    // every frame (chapter 11).
     SDL_Event event = {};
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
@@ -98,6 +117,13 @@ bool handle_events()
         }
     }
     return true;
+}
+
+void window_size_in_pixels(i32* width, i32* height)
+{
+    // SDL fills in 0s if it fails, which only happens without a window. A
+    // failure isn't logged, since this runs every frame.
+    SDL_GetWindowSizeInPixels(window, width, height);
 }
 
 void present()
