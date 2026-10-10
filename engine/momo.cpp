@@ -3,6 +3,7 @@
 #include "momo.h"
 #include "platform.h"
 #include "renderer.h"
+#include "timestep.h"
 
 #include <stddef.h>
 
@@ -22,7 +23,12 @@ struct Engine {
     i32 state_version;
     i64 state_size;
 
-    i32 frame_index;
+    // How many ticks each frame runs (chapter 09), and what the loop has
+    // done since it started, for the log.
+    Timestep timestep;
+    i64 start_ns; // when the loop started, by platform::clock_ns
+    i32 frame_count;
+    i32 tick_count;
     bool quit_requested;
 
     u8* memory; // one block from the OS, split into the four arenas
@@ -207,21 +213,33 @@ i32 run()
         return 1;
 
     start_game();
+    engine.start_ns = platform::clock_ns();
+    timestep::init(&engine.timestep, engine.start_ns);
     while (!engine.quit_requested) {
         if (!platform::handle_events())
             break; // the window was closed, or Ctrl+C
         reload_game_if_changed();
         arena::reset(&engine.frame); // last frame's memory is free again
-        if (engine.game_lib)
-            engine.game.update(engine.state);
-        renderer::begin_frame();
-        platform::present();
-        engine.frame_index++;
 
-        // About 60 frames a second. Chapter 09 replaces this with a real
-        // clock.
-        platform::sleep_ms(16);
+        // One tick for every 1/60 s since the last frame: none, one or a few,
+        // however fast the frames come. A game that failed to load runs
+        // none, and waits.
+        i32 ticks = timestep::advance(&engine.timestep, platform::clock_ns());
+        if (engine.timestep.dropped_ns > 0)
+            LOG_WARN("skipping %lld ms of game time: a frame runs at most %d ticks",
+                     engine.timestep.dropped_ns / 1'000'000, MAX_TICKS_PER_FRAME);
+        if (engine.game_lib) {
+            for (i32 i = 0; i < ticks; i++)
+                engine.game.update(engine.state);
+            engine.tick_count += ticks;
+        }
+
+        renderer::begin_frame();
+        platform::present(); // with vsync, waits for the display
+        engine.frame_count++;
     }
+    // SDL's clock starts over after platform::shutdown, so read it now.
+    f64 seconds = (f64)(platform::clock_ns() - engine.start_ns) / 1e9;
 
     if (engine.game_lib) {
         engine.game.shutdown(engine.state);
@@ -229,14 +247,10 @@ i32 run()
     }
     platform::shutdown();
 
-    LOG_INFO("quit after %d frames", engine.frame_index);
+    LOG_INFO("quit after %.2f s: %d frames, %d ticks", seconds, engine.frame_count,
+             engine.tick_count);
     shutdown_memory();
     return 0;
-}
-
-i32 frame_index()
-{
-    return engine.frame_index;
 }
 
 void quit()

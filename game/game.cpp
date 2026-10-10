@@ -8,10 +8,11 @@
 // change of size the engine notices by itself.
 constexpr i32 GAME_STATE_VERSION = 1;
 
-// Everything the game remembers from one frame to the next. The engine keeps
+// Everything the game remembers from one tick to the next. The engine keeps
 // it in its own memory, so it survives a reload of this code. Game state holds
 // numbers, enums and indices only, never pointers into game.so (chapter 06).
 struct GameState {
+    i32 tick;    // ticks run since init, which counts game time (chapter 09)
     i32 bat_x;   // pixels from the left edge of the screen
     i32 bat_dir; // 1 flying right, -1 flying left
 };
@@ -20,7 +21,7 @@ namespace game {
 
 constexpr i32 SCREEN_WIDTH = 256;
 constexpr i32 TILE_SIZE = 16;
-constexpr i32 BAT_SPEED = 1; // pixels per frame
+constexpr i32 BAT_SPEED = 1; // pixels per tick
 
 void init(GameState* state)
 {
@@ -29,6 +30,7 @@ void init(GameState* state)
     state->bat_dir = 1;
 }
 
+// One tick: 1/60 s of game time.
 void update(GameState* state)
 {
     // Fly, and turn around at either edge of the screen.
@@ -39,16 +41,17 @@ void update(GameState* state)
         state->bat_dir = -state->bat_dir;
     }
 
-    // Twice a second, draw the screen as one row of 16 tiles, with the bat
-    // in the tile it's in.
-    i32 frame = momo::frame_index();
-    if (frame % 30 != 0)
-        return;
-    char row[SCREEN_WIDTH / TILE_SIZE] = {};
-    for (i32 i = 0; i < ARRAY_COUNT(row); i++)
-        row[i] = '.';
-    row[state->bat_x / TILE_SIZE] = 'B';
-    LOG_INFO("frame %4d  |%.*s|  x = %3d", frame, ARRAY_COUNT(row), row, state->bat_x);
+    // Twice a second of game time, draw the screen as one row of 16 tiles,
+    // with the bat in the tile it's in.
+    if (state->tick % 30 == 0) {
+        char row[SCREEN_WIDTH / TILE_SIZE] = {};
+        for (i32 i = 0; i < ARRAY_COUNT(row); i++)
+            row[i] = '.';
+        row[state->bat_x / TILE_SIZE] = 'B';
+        LOG_INFO("tick %4d  |%.*s|  x = %3d", state->tick, ARRAY_COUNT(row), row, state->bat_x);
+    }
+
+    state->tick++;
 }
 
 void shutdown(GameState* state)

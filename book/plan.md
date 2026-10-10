@@ -154,6 +154,10 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Fixed 60 Hz game updates, with speeds in pixels or subpixels per frame | MegaMan-style movement numbers carry over directly, and the simulation is deterministic. |
 | Ticks per frame are capped | Resuming from a gdb breakpoint doesn't make the game fast-forward. |
 | No smoothing between ticks for now | It can come in a later chapter if a high-refresh display stutters. |
+| *Added in ch09:* A **tick** is one 60 Hz update of the game, and a **frame** is one picture. Speeds are per tick. | The NES drew one picture per update, so MegaMan's "per frame" numbers are per tick in momo. How many frames there are depends on the display. |
+| *Added in ch09:* Each frame runs one tick for every whole 1/60 s since the last frame, and owes the rest to the next. Time is integer nanoseconds from SDL's monotonic clock, passed to the timestep's arithmetic instead of read by it. | Integers are exact, and an `i64` of nanoseconds lasts 292 years. Tests hand the timestep made-up times, so a second of frames takes no time to test and needs no SDL. |
+| *Added in ch09:* A frame runs at most 6 ticks (100 ms). Time over the cap is dropped, not owed, and logged. | On Wayland, SDL stops waiting for the compositor after 50 ms, so a window that's opening or hidden draws 20 frames a second, and those must keep full speed. A slower frame is a stall, and catching up would make the game race. |
+| *Added in ch09:* The game counts its own ticks in `GameState`. The engine gives it no clock, no frame count and no time step. | The game's logic must depend only on `GameState` and its inputs. Chapter 21's replays rewind only the game's memory, so anything else would make a replay go differently. |
 
 ### 4.4 Platform and input
 
@@ -179,7 +183,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | **Palette sprites for characters:** single-channel index textures plus palette rows chosen per draw. Tiles stay RGBA. Plus a hit flash. | Weapon colors, damage flashes and boss variants are just different rows. It's the graphics lesson most tied to this game. |
 | *Added in ch08:* `platform::` makes the OpenGL context and looks up OpenGL's functions. Only `renderer.cpp` includes glad and calls OpenGL. | Each module keeps to one library, so porting either one rewrites one file. |
 | *Added in ch08:* The debug callback logs each message at its severity, and `ASSERT`s on errors from the API. Notifications are off, messages are synchronous, and both builds ask for a debug context. | A wrong call is a bug in momo (§3.3). A shader that won't compile arrives as an error too, but from the shader compiler, and it's an expected failure. Mesa queues calls, so without synchronous messages an error is reported far from the call that caused it. |
-| *Added in ch08:* vsync is off until chapter 09 | Left to the video driver, it was off on Wayland and on under X11. The loop's sleep sets the pace until chapter 09 picks a clock. |
+| *Added in ch08:* vsync is off until chapter 09. **Changed in ch09** (next row). | Left to the video driver, it was off on Wayland and on under X11. The loop's sleep sets the pace until chapter 09 picks a clock. |
+| *Changed in ch09:* vsync is on, and nothing sleeps. Without vsync, momo logs a warning and draws as many frames as it can. | The fixed timestep keeps the game's speed whatever the frame rate, so the display can set it. On a display that's a multiple of 60 Hz, every tick stays up for the same number of refreshes. The CPU waits in the swap: 2% of a core, against 114% with vsync off. |
 
 ### 4.6 Numbers
 

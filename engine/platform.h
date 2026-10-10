@@ -1,6 +1,7 @@
 // platform.h: everything the engine needs from the operating system: a
-// window, its events and its OpenGL context, memory, files and libraries.
-// Chapter 07 explains it, and chapter 08 adds OpenGL.
+// window, its events and its OpenGL context, memory, files, libraries and a
+// clock. Chapter 07 explains it, chapter 08 adds OpenGL, and chapter 09 the
+// clock and vsync.
 #pragma once
 
 #include "base.h"
@@ -19,7 +20,7 @@ namespace platform {
 // ---- The window -------------------------------------------------------------
 
 // Starts SDL and opens a window width by height in size, with an OpenGL 4.6
-// context ready to draw into it (chapter 08).
+// context ready to draw into it (chapter 08), and vsync on (chapter 09).
 bool init(const char* title, i32 width, i32 height);
 
 // Closes the OpenGL context and the window, and stops SDL.
@@ -31,7 +32,8 @@ void shutdown();
 bool handle_events();
 
 // Shows the frame OpenGL drew in the window, and gives OpenGL another
-// picture to draw the next frame into.
+// picture to draw the next frame into. With vsync, it first waits until the
+// display is ready for a new picture.
 void present();
 
 // The type of an OpenGL function as SDL hands it out, before it's cast to
@@ -42,6 +44,15 @@ using GlFunction = void (*)();
 // The address of the OpenGL function called name, such as "glClear", or
 // null if the driver doesn't have it. Works only after init.
 GlFunction gl_function(const char* name);
+
+// ---- The clock --------------------------------------------------------------
+
+// The time now, in nanoseconds since SDL first read its clock, which in momo
+// is during init. The clock never goes backwards, even when the system's
+// time is set, so the difference between two readings is the time that
+// passed between them. Use it between init and shutdown only: after
+// shutdown, SDL's clock starts again from 0.
+i64 clock_ns();
 
 // ---- Memory, files and libraries --------------------------------------------
 
@@ -71,8 +82,5 @@ void* find_function(void* library, const char* name);
 
 // Unloads a library. Every address in it is gone afterwards.
 void close_library(void* library);
-
-// Waits for about this many milliseconds.
-void sleep_ms(i32 milliseconds);
 
 } // namespace platform

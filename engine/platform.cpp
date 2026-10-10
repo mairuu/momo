@@ -52,16 +52,26 @@ bool init(const char* title, i32 width, i32 height)
         return false;
     }
 
-    // No vsync for now: swapping doesn't wait for the display, so the
-    // loop's sleep alone sets the pace, whichever video driver SDL picked.
-    // Left alone, vsync was off on Wayland and on under X11. Chapter 09
-    // decides vsync, along with the clock.
-    SDL_GL_SetSwapInterval(0);
+    // Vsync: each swap waits until the display is ready for a new picture,
+    // so momo draws as many frames a second as the display shows, and waits
+    // the rest of the time. The game's speed doesn't depend on it: the loop
+    // runs 60 ticks a second at any frame rate (chapter 09). Without vsync,
+    // momo still works, but draws as many frames as it can.
+    if (!SDL_GL_SetSwapInterval(1))
+        LOG_WARN("no vsync: %s", SDL_GetError());
+
+    // The display the window opens on, for the log. On Wayland, SDL can only
+    // guess until the window is shown: the one with the focus.
+    f32 refresh_rate = 0;
+    const SDL_DisplayMode* mode = SDL_GetCurrentDisplayMode(SDL_GetDisplayForWindow(window));
+    if (mode)
+        refresh_rate = mode->refresh_rate;
 
     i32 version = SDL_GetVersion();
-    LOG_INFO("SDL %d.%d.%d, video driver %s, window %dx%d", SDL_VERSIONNUM_MAJOR(version),
-             SDL_VERSIONNUM_MINOR(version), SDL_VERSIONNUM_MICRO(version),
-             SDL_GetCurrentVideoDriver(), width, height);
+    LOG_INFO("SDL %d.%d.%d, video driver %s, window %dx%d, display %.0f Hz",
+             SDL_VERSIONNUM_MAJOR(version), SDL_VERSIONNUM_MINOR(version),
+             SDL_VERSIONNUM_MICRO(version), SDL_GetCurrentVideoDriver(), width, height,
+             refresh_rate);
     return true;
 }
 
@@ -97,8 +107,8 @@ void present()
     // buffer to the display server and gives OpenGL a free one for the next
     // frame, so you never see a frame half drawn.
     //
-    // A failure isn't logged: it would repeat 60 times a second, and the
-    // window would only keep its last picture.
+    // A failure isn't logged: it would repeat every frame, and the window
+    // would only keep its last picture.
     SDL_GL_SwapWindow(window);
 }
 
@@ -108,6 +118,17 @@ GlFunction gl_function(const char* name)
     // other functions here, a missing function isn't logged: glad asks for
     // every function in OpenGL 4.6 and checks the version itself.
     return SDL_GL_GetProcAddress(name);
+}
+
+// ---- The clock --------------------------------------------------------------
+
+i64 clock_ns()
+{
+    // On Linux, SDL calls clock_gettime with CLOCK_MONOTONIC_RAW: a clock
+    // that only counts up (monotonic), straight from the hardware (raw), so
+    // nothing adjusts it, not even the small corrections NTP makes to keep
+    // the system's time right.
+    return (i64)SDL_GetTicksNS();
 }
 
 // ---- Memory, files and libraries --------------------------------------------
@@ -171,11 +192,6 @@ void* find_function(void* library, const char* name)
 void close_library(void* library)
 {
     SDL_UnloadObject((SDL_SharedObject*)library);
-}
-
-void sleep_ms(i32 milliseconds)
-{
-    SDL_Delay((u32)milliseconds);
 }
 
 } // namespace platform
