@@ -1,5 +1,6 @@
-// game.cpp: the game. For now it's a bat flying back and forth across the
-// screen, and a player who walks where the pad says and changes power.
+// game.cpp: the game. For now it's two nests that let out bats, one at a time
+// each, and a player who walks where the pad says and changes power. Each of
+// them is an entity.
 #include "momo.h"
 
 // Bump this by hand whenever GameState changes in a way that keeps its size:
@@ -7,20 +8,47 @@
 // change of size the engine notices by itself.
 constexpr i32 GAME_STATE_VERSION = 1;
 
-// Everything the game remembers from one tick to the next. The engine keeps
-// it in its own memory, so it survives a reload of this code. Game state holds
-// numbers, enums and indices only, never pointers into game.so (chapter 06).
+// What an entity is. update and render each switch on it, with a case for
+// every kind (chapter 16). Zero is no kind at all, so an entity added without
+// one stops the game the first time it's updated.
+//
+// GameState keeps each entity's kind as a number, which a reload doesn't
+// change. Add new kinds at the end, or bump GAME_STATE_VERSION: a kind added
+// in the middle would change what the numbers after it mean.
+enum EntityKind : u8 {
+    ENTITY_NONE,
+    ENTITY_PLAYER,
+    ENTITY_NEST, // lets out bats
+    ENTITY_BAT,
+};
+
+// Anything in the game that moves or acts. Every kind has every field, and
+// leaves the ones it doesn't use at zero.
 //
 // Positions and speeds are fixed-point, in pixels and pixels per tick
 // (chapter 15). render rounds positions down to whole pixels, and nothing
 // else does.
+struct Entity {
+    EntityKind kind;
+    Fx2 pos;    // its top left corner, from the screen's top left
+    Fx2 vel;    // pixels per tick. A nest's is the velocity it gives its bats.
+    i32 timer;  // ticks: a bat's since it left its nest, a nest's while it waits
+    Handle bat; // a nest's bat: the last one it let out, which may be gone
+};
+
+// The most entities there can be at once. One more is an ASSERT.
+constexpr i32 MAX_ENTITIES = 32;
+
+// Everything the game remembers from one tick to the next. The engine keeps
+// it in its own memory, so it survives a reload of this code. Game state holds
+// numbers, enums, indices and handles only, never pointers into game.so
+// (chapter 06).
 struct GameState {
-    i32 tick;            // ticks run since init, which counts game time (chapter 09)
-    Fx2 bat_pos;         // the bat's top left corner, from the screen's top left
-    Fx2 bat_vel;         // pixels per tick: BAT_SPEED to the right or to the left
-    Texture bat_texture; // bat.png, a number the renderer gave out (chapter 12)
-    Fx2 player_pos;      // the player's top left corner
-    i32 power;           // the player's power, 0 to POWER_COUNT - 1, which shows as its color
+    i32 tick;                            // ticks run since init: game time (chapter 09)
+    Pool<Entity, MAX_ENTITIES> entities; // everything that moves or acts (chapter 16)
+    Handle player;                       // the player's entity
+    i32 power;                           // the player's power, 0 to POWER_COUNT - 1: its color
+    Texture bat_texture;                 // bat.png, a number the renderer gave out (chapter 12)
 };
 
 namespace game {
@@ -43,9 +71,6 @@ constexpr Button PREVIOUS_POWER_BUTTON = BUTTON_L;
 constexpr Button NEXT_POWER_BUTTON = BUTTON_R;
 
 constexpr i32 TILE_SIZE = 16;
-constexpr Fx BAT_SPEED = fx::from_int(1); // pixels per tick
-constexpr i32 BAT_Y = 136;   // the top of the bat, in pixels from the top of the screen
-constexpr i32 BAT_SIZE = 16; // each frame in bat.png is 16x16
 constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE; // two rows of tiles
 
 // MegaMan's walking speed in MegaMan 1 and 2: 1 pixel and 96/256 a tick.
@@ -54,8 +79,15 @@ constexpr i32 PLAYER_START_X = 48;
 constexpr i32 PLAYER_WIDTH = 16;
 constexpr i32 PLAYER_HEIGHT = 24;
 
+constexpr i32 NEST_SIZE = 16;
+// How long a nest waits, once its bat is gone, before it lets out the next.
+constexpr i32 NEST_WAIT_TICKS = 60;
+constexpr i32 BAT_SIZE = 16; // each frame in bat.png is 16x16
+
 constexpr Color FLOOR_COLORS[] = { renderer::rgb(0x7c4a1e), renderer::rgb(0x5c3612) };
 constexpr Color PILLAR_COLOR = renderer::rgb(0x8a8a8a);
+constexpr Color NEST_RIM_COLOR = renderer::rgb(0x5a5a5a);
+constexpr Color NEST_HOLE_COLOR = renderer::rgb(0x141414);
 constexpr Color SHADOW_COLOR = { .r = 0, .g = 0, .b = 0, .a = 96 }; // black, partly see-through
 constexpr Color TEXT_COLOR = renderer::rgb(0xffffff);
 
@@ -72,41 +104,145 @@ constexpr i32 POWER_COUNT = ARRAY_COUNT(POWER_COLORS);
 void init(GameState* state)
 {
     LOG_INFO("init");
-    // The engine hands over a zeroed GameState, so the bat starts at x = 0.
-    state->bat_pos.y = fx::from_int(BAT_Y);
-    state->bat_vel.x = BAT_SPEED;
     state->bat_texture = renderer::load_texture("assets/bat.png");
-    state->player_pos = { .x = fx::from_int(PLAYER_START_X),
-                          .y = fx::from_int(FLOOR_Y - PLAYER_HEIGHT) };
+
+    // The engine hands over a zeroed GameState, so the pool starts empty, and
+    // the player goes into slot 0.
+    state->player = pool::add(&state->entities,
+                              { .kind = ENTITY_PLAYER,
+                                .pos = { .x = fx::from_int(PLAYER_START_X),
+                                         .y = fx::from_int(FLOOR_Y - PLAYER_HEIGHT) } });
+
+    // A nest on each side of the screen. The left one's bats fly right, and
+    // the right one's fly left, faster.
+    pool::add(&state->entities,
+              { .kind = ENTITY_NEST,
+                .pos = { .x = fx::from_int(8), .y = fx::from_int(104) },
+                .vel = { .x = fx::from_double(1.5) } });
+    pool::add(&state->entities,
+              { .kind = ENTITY_NEST,
+                .pos = { .x = fx::from_int(232), .y = fx::from_int(144) },
+                .vel = { .x = fx::from_int(-2) } });
 }
 
-// One tick: 1/60 s of game time.
-void update(GameState* state)
-{
-    // Fly, and turn around at either edge of the screen.
-    state->bat_pos += state->bat_vel;
-    Fx left_edge = fx::from_int(0);
-    Fx right_edge = fx::from_int(SCREEN_WIDTH - TILE_SIZE);
-    if (state->bat_pos.x <= left_edge || state->bat_pos.x >= right_edge) {
-        state->bat_pos.x = clamp(state->bat_pos.x, left_edge, right_edge);
-        state->bat_vel.x = -state->bat_vel.x;
-    }
+// ---- Update -----------------------------------------------------------------
 
-    // Walk while the d-pad is held left or right. Both at once cancel out.
+// Walks while the d-pad is held left or right, and changes power.
+void update_player(GameState* state, Entity* player)
+{
+    // Both directions at once cancel out.
     if (input::down(BUTTON_LEFT))
-        state->player_pos.x -= PLAYER_SPEED;
+        player->pos.x -= PLAYER_SPEED;
     if (input::down(BUTTON_RIGHT))
-        state->player_pos.x += PLAYER_SPEED;
-    state->player_pos.x =
-        clamp(state->player_pos.x, fx::from_int(0), fx::from_int(SCREEN_WIDTH - PLAYER_WIDTH));
+        player->pos.x += PLAYER_SPEED;
+    player->pos.x =
+        clamp(player->pos.x, fx::from_int(0), fx::from_int(SCREEN_WIDTH - PLAYER_WIDTH));
 
     // One power along for each press, however long the button stays down.
     if (input::pressed(NEXT_POWER_BUTTON))
         state->power = (state->power + 1) % POWER_COUNT;
     if (input::pressed(PREVIOUS_POWER_BUTTON))
         state->power = (state->power + POWER_COUNT - 1) % POWER_COUNT;
+}
+
+// A nest lets out one bat at a time. While its bat is out, it waits, and
+// NEST_WAIT_TICKS after the bat has gone, it lets out the next. A new nest's
+// handle is zeroed, which finds nothing, so its first bat comes out
+// NEST_WAIT_TICKS after init.
+void update_nest(GameState* state, Entity* nest)
+{
+    if (pool::contains(state->entities, nest->bat))
+        return; // its bat is still out
+
+    nest->timer++;
+    if (nest->timer < NEST_WAIT_TICKS)
+        return;
+    nest->timer = 0;
+    // Adding moves no entity, so nest still points at this nest.
+    nest->bat =
+        pool::add(&state->entities, { .kind = ENTITY_BAT, .pos = nest->pos, .vel = nest->vel });
+    LOG_INFO("tick %d: the nest at x = %d lets out a bat into slot %d, generation %d", state->tick,
+             fx::floor(nest->pos.x), nest->bat.index, nest->bat.generation);
+}
+
+// A bat flies straight on, and once it's wholly off the screen, it's gone.
+// self is its own handle, which removing it needs.
+void update_bat(GameState* state, Handle self, Entity* bat)
+{
+    bat->pos += bat->vel;
+    bat->timer++;
+    if (bat->pos.x <= fx::from_int(-BAT_SIZE) || bat->pos.x >= fx::from_int(SCREEN_WIDTH)) {
+        LOG_INFO("tick %d: the bat in slot %d flew off the screen", state->tick, self.index);
+        pool::remove(&state->entities, self);
+    }
+}
+
+// One tick: 1/60 s of game time.
+void update(GameState* state)
+{
+    // Every entity in turn, in the order of their slots. A nest's new bat
+    // goes into a later slot than the nest's, so it moves on the tick it
+    // comes out.
+    for (i32 i = 0; i < MAX_ENTITIES; i++) {
+        Handle handle = pool::handle_at(state->entities, i);
+        Entity* e = pool::get(&state->entities, handle);
+        if (!e)
+            continue; // an empty slot
+        switch (e->kind) {
+        case ENTITY_NONE:
+            ASSERT(!"an entity with no kind");
+            break;
+        case ENTITY_PLAYER:
+            update_player(state, e);
+            break;
+        case ENTITY_NEST:
+            update_nest(state, e);
+            break;
+        case ENTITY_BAT:
+            update_bat(state, handle, e);
+            break;
+        }
+    }
 
     state->tick++;
+}
+
+// ---- Render -----------------------------------------------------------------
+
+// The player, standing on the floor, in its power's color. It walks behind
+// the pillar, which is in the foreground.
+void draw_player(const GameState* state, const Entity* player)
+{
+    Rect rect = { .x = fx::floor(player->pos.x),
+                  .y = fx::floor(player->pos.y),
+                  .w = PLAYER_WIDTH,
+                  .h = PLAYER_HEIGHT };
+    renderer::draw_rect(rect, POWER_COLORS[state->power], LAYER_ENTITIES);
+}
+
+// A dark hole with a stone rim, behind the bats that come out of it.
+void draw_nest(const Entity* nest)
+{
+    i32 x = fx::floor(nest->pos.x);
+    i32 y = fx::floor(nest->pos.y);
+    Rect rim = { .x = x - 2, .y = y - 2, .w = NEST_SIZE + 4, .h = NEST_SIZE + 4 };
+    renderer::draw_rect(rim, NEST_RIM_COLOR, LAYER_BACKGROUND);
+    Rect hole = { .x = x, .y = y, .w = NEST_SIZE, .h = NEST_SIZE };
+    renderer::draw_rect(hole, NEST_HOLE_COLOR, LAYER_BACKGROUND);
+}
+
+// The bat's shadow on the floor, then the bat. bat.png holds two frames side
+// by side, wings up and wings down, and the bat flaps from one to the other
+// every 8 ticks, counted from when it left its nest.
+void draw_bat(const GameState* state, const Entity* bat)
+{
+    i32 x = fx::floor(bat->pos.x);
+    i32 y = fx::floor(bat->pos.y);
+    renderer::draw_rect({ .x = x + 2, .y = FLOOR_Y, .w = 12, .h = 3 }, SHADOW_COLOR,
+                        LAYER_ENTITIES);
+    i32 frame = (bat->timer / 8) % 2;
+    Rect source = { .x = frame * BAT_SIZE, .y = 0, .w = BAT_SIZE, .h = BAT_SIZE };
+    renderer::draw_sprite(state->bat_texture, source, x, y, LAYER_ENTITIES);
 }
 
 // Once per frame: the whole picture, drawn again from the state.
@@ -123,29 +259,31 @@ void render(const GameState* state)
         }
     }
 
-    // A stone pillar in the middle of the screen, in front of the bat.
+    // A stone pillar in the middle of the screen, in front of the bats.
     Rect pillar = { .x = 120, .y = 96, .w = TILE_SIZE, .h = FLOOR_Y - 96 };
     renderer::draw_rect(pillar, PILLAR_COLOR, LAYER_FOREGROUND);
 
-    // The bat's shadow on the floor, then the bat. bat.png holds two frames
-    // side by side, wings up and wings down, and the bat flaps from one to
-    // the other every 8 ticks. Its position rounds down to the pixel it's
-    // drawn at.
-    i32 x = fx::floor(state->bat_pos.x);
-    i32 y = fx::floor(state->bat_pos.y);
-    renderer::draw_rect({ .x = x + 2, .y = FLOOR_Y, .w = 12, .h = 3 }, SHADOW_COLOR,
-                        LAYER_ENTITIES);
-    i32 frame = (state->tick / 8) % 2;
-    Rect source = { .x = frame * BAT_SIZE, .y = 0, .w = BAT_SIZE, .h = BAT_SIZE };
-    renderer::draw_sprite(state->bat_texture, source, x, y, LAYER_ENTITIES);
-
-    // The player, standing on the floor, in its power's color. It walks
-    // behind the pillar, which is in the foreground.
-    Rect player = { .x = fx::floor(state->player_pos.x),
-                    .y = fx::floor(state->player_pos.y),
-                    .w = PLAYER_WIDTH,
-                    .h = PLAYER_HEIGHT };
-    renderer::draw_rect(player, POWER_COLORS[state->power], LAYER_ENTITIES);
+    // Every entity, in the order of their slots, as in update. state is
+    // const, so this is the get that returns const pointers.
+    for (i32 i = 0; i < MAX_ENTITIES; i++) {
+        const Entity* e = pool::get(state->entities, pool::handle_at(state->entities, i));
+        if (!e)
+            continue; // an empty slot
+        switch (e->kind) {
+        case ENTITY_NONE:
+            ASSERT(!"an entity with no kind");
+            break;
+        case ENTITY_PLAYER:
+            draw_player(state, e);
+            break;
+        case ENTITY_NEST:
+            draw_nest(e);
+            break;
+        case ENTITY_BAT:
+            draw_bat(state, e);
+            break;
+        }
+    }
 
     // READY, centered and blinking, as MegaMan 2 says it when a stage
     // starts: on for 16 ticks, off for 16.
@@ -157,8 +295,9 @@ void render(const GameState* state)
 
 void shutdown(GameState* state)
 {
-    LOG_INFO("shutdown, with the bat at x = %g, the player at x = %g, power %d",
-             fx::to_double(state->bat_pos.x), fx::to_double(state->player_pos.x), state->power);
+    const Entity* player = pool::get(state->entities, state->player);
+    LOG_INFO("shutdown, with %d entities, the player at x = %g, power %d", state->entities.count,
+             fx::to_double(player->pos.x), state->power);
 }
 
 } // namespace game

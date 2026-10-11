@@ -37,7 +37,7 @@ The book is append-only, and so is this plan. When a later chapter changes a dec
 
 **Chapters you implement:** Claude commits the spec, stubs and failing tests as `chNN-spec`. You implement, Claude reviews, and `chNN` is tagged on your code. Claude adjusts only what later chapters depend on.
 
-**The game design** lives in `book/design.md`. Claude drafts it before chapter 16, and you decide the theme, names and tone. Claude keeps it inside the Part I and Part II scope.
+**The game design** lives in `book/design.md`. Claude drafts it before chapter 16, and you decide the theme, names and tone. Claude keeps it inside the Part I and Part II scope. **Changed in ch16:** it comes after chapter 16, as a request of its own, before the chapters that need names: chapter 26's enemies at the latest.
 
 ## 3. Language: Orthodox C++20, built with GCC
 
@@ -235,6 +235,10 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | One `Entity` struct with a `kind` enum, in a fixed `Pool<T>` with generational handles | Enough for a few dozen entities. The handles catch references to entities that no longer exist. |
 | ECS comes later, in Part II: build a small sparse-set ECS by hand, port the game or part of it, and compare honestly | You learn ECS best after running into the problem it solves. At this size, plain structs may come out ahead, and the book will say so if they do. |
 | No EnTT | It's heavy on templates and breaks §3.1. |
+| *Added in ch16:* A `Pool<T, N>` keeps its items in arrays inside itself, so a zeroed pool is an empty one, and `GameState` holds it like any other field. Its functions are templates in `pool.h`. | Nothing to set up and no pointer to keep. The pool's size is part of `GameState`'s, so changing the capacity starts the game over instead of leaving an array that's too small. |
+| *Added in ch16:* A **handle** is a slot's index and the slot's generation when the item was added. Each add into a slot counts its generation up, from 1, so a zeroed handle finds nothing. | Measured with the game's two nests: with an index alone, the left nest took the right nest's bat for its own, four seconds in, and let out its next bat two seconds late. Without generation 0 meaning none, every zeroed handle found the player in slot 0. |
+| *Added in ch16:* `add` takes the first free slot, found by scanning. `remove` `ASSERT`s that its handle still finds the item, and zeroes the slot. Nothing ever moves. | 32 flags are half a cache line, and the lowest free slot keeps the log easy to follow. Removing an item twice is a bug. A pointer kept past the remove reads `ENTITY_NONE`. Entities can be added and removed in the middle of the loop that visits them. |
+| *Added in ch16:* An entity's kind 0 is `ENTITY_NONE`. `update` and `render` each `switch` on the kind, with no `default`, and `ENTITY_NONE`'s `case` is an `ASSERT`. New kinds go at the end of the enum. | An entity added without a kind stops the game instead of becoming a second player. `-Wswitch` names a kind with no `case`. A kind added in the middle turned the bats into another kind on a reload, and `GameState`'s size couldn't show it. |
 
 ### 4.8 Collision
 

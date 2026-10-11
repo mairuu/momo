@@ -9,6 +9,7 @@
 #include "fx.h"
 #include "input.h"
 #include "logger.h"
+#include "pool.h"
 #include "renderer.h"
 #include "str.h"
 
