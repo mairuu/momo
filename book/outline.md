@@ -23,7 +23,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 **C. Drawing**
 - 10 Sprite Batch: colored rectangles, one draw call, layers. *Changed in ch10:* also gives the game its `render`, and compiles the first shaders, logging why one doesn't compile.
 - 11 Virtual Screen: 256×240, whole-number scaling, black bars. *Changed in ch11:* also makes the window resizable, and asks for every pixel of the display, so a display scale doesn't blur it.
-- 12 Textures: stb_image; an 8×8 font in code as the first texture
+- 12 Textures: stb_image; an 8×8 font in code as the first texture. *Changed in ch12:* also draws text with the font, `draw_text`, which the game uses for READY, and loads the game's first picture, the bat.
 - 13 Debug Text and Capture: the overlay, `--capture`
 
 **D. Moving things**

@@ -205,9 +205,8 @@ i32 run()
         return 1;
     LOG_INFO("loaded %.*s", engine.game_path.len, engine.game_path.data);
 
-    // The window and OpenGL start before the game does. From chapter 12 on,
-    // the game's init loads textures, and OpenGL needs a window before it
-    // can take them.
+    // The window and OpenGL start before the game does. The game's init
+    // loads textures, and OpenGL needs a window before it can take them.
     if (!platform::init("momo", WINDOW_WIDTH, WINDOW_HEIGHT))
         return 1;
     if (!renderer::init(&engine.arena))

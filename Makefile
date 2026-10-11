@@ -55,7 +55,13 @@ SDL_LIBS   := $(shell pkg-config --libs sdl3)
 GLAD_INCLUDE := -Ithird_party/glad/include
 GLAD_CFLAGS  := $(CFLAGS) -fPIC -fvisibility=hidden $(GLAD_INCLUDE)
 
-ENGINE_CXXFLAGS := $(LIB_CXXFLAGS) $(SDL_CFLAGS) $(GLAD_INCLUDE)
+# stb_image, the PNG decoder (chapter 12), goes into libmomo.so the same way.
+# stb_image.c finds its header in its own folder, and the engine finds it as
+# <stb_image.h>.
+STB_INCLUDE := -Ithird_party/stb
+STB_CFLAGS  := $(CFLAGS) -fPIC -fvisibility=hidden
+
+ENGINE_CXXFLAGS := $(LIB_CXXFLAGS) $(SDL_CFLAGS) $(GLAD_INCLUDE) $(STB_INCLUDE)
 
 # For linking a shared library. --no-undefined makes calling a function that
 # no library exports a link error, instead of an error when it's loaded.
@@ -83,6 +89,9 @@ HOST_OBJ   := $(HOST_SRC:%.cpp=$(OUT)/obj/%.o)
 # has its own layout, so its files are listed by name.
 GLAD_SRC := third_party/glad/src/gl.c
 GLAD_OBJ := $(GLAD_SRC:%.c=$(OUT)/obj/%.o)
+STB_SRC  := third_party/stb/stb_image.c
+STB_OBJ  := $(STB_SRC:%.c=$(OUT)/obj/%.o)
+VENDOR_OBJ := $(GLAD_OBJ) $(STB_OBJ)
 
 # tests/test.cpp is the runner. Every tests/<name>_test.cpp is a test program
 # of its own, built as build/<config>/tests/<name>_test.
@@ -90,9 +99,15 @@ TESTS_SRC  := $(wildcard tests/*.cpp)
 TESTS_OBJ  := $(TESTS_SRC:%.cpp=$(OUT)/obj/%.o)
 TEST_PROGS := $(patsubst tests/%.cpp,$(OUT)/tests/%,$(wildcard tests/*_test.cpp))
 
+# The game's pictures (chapter 12). The engine looks for them in the
+# executable's folder, as it does for game.so, so each one is copied into the
+# build: assets/bat.png -> build/debug/assets/bat.png.
+ASSETS     := $(wildcard assets/*.png)
+ASSETS_OUT := $(ASSETS:%=$(OUT)/%)
+
 # ---- Targets ----------------------------------------------------------------
 
-all: $(OUT)/momo $(OUT)/libmomo.so $(OUT)/game.so compile_commands.json
+all: $(OUT)/momo $(OUT)/libmomo.so $(OUT)/game.so $(ASSETS_OUT) compile_commands.json
 
 release:
 	$(MAKE) CONFIG=release
@@ -136,8 +151,8 @@ lint: compile_commands.json
 # Every rule below also depends on the Makefile, so changing a flag here
 # rebuilds everything that uses it.
 
-$(OUT)/libmomo.so: $(ENGINE_OBJ) $(GLAD_OBJ) Makefile
-	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) $(GLAD_OBJ) $(SDL_LIBS) -o $@
+$(OUT)/libmomo.so: $(ENGINE_OBJ) $(VENDOR_OBJ) Makefile
+	$(CXX) $(LIB_LDFLAGS) $(ENGINE_OBJ) $(VENDOR_OBJ) $(SDL_LIBS) -o $@
 
 # The running engine reloads game.so as soon as it changes (chapter 06), so
 # the new file has to appear all at once. The linker writes it under another
@@ -154,9 +169,9 @@ $(OUT)/momo: $(HOST_OBJ) $(OUT)/libmomo.so Makefile
 # only the object files that define something the program calls. Every
 # function in them can be called, MOMO_API or not. It lives in obj/, so
 # -lmomo never finds it instead of libmomo.so.
-$(OUT)/obj/libmomo.a: $(ENGINE_OBJ) $(GLAD_OBJ) Makefile
+$(OUT)/obj/libmomo.a: $(ENGINE_OBJ) $(VENDOR_OBJ) Makefile
 	rm -f $@
-	ar rcs $@ $(ENGINE_OBJ) $(GLAD_OBJ)
+	ar rcs $@ $(ENGINE_OBJ) $(VENDOR_OBJ)
 
 # One rule for every test program: its own object file, the runner, and
 # whatever it uses from the engine. "targets: pattern: prerequisites" is a
@@ -194,8 +209,18 @@ $(OUT)/obj/third_party/glad/%.o: third_party/glad/%.c Makefile
 	@mkdir -p $(dir $@)
 	$(CC) $(GLAD_CFLAGS) -MMD -MP -c $< -o $@
 
+$(OUT)/obj/third_party/stb/%.o: third_party/stb/%.c Makefile
+	@mkdir -p $(dir $@)
+	$(CC) $(STB_CFLAGS) -MMD -MP -c $< -o $@
+
 -include $(ENGINE_OBJ:.o=.d) $(GAME_OBJ:.o=.d) $(HOST_OBJ:.o=.d) $(TESTS_OBJ:.o=.d) \
-         $(GLAD_OBJ:.o=.d)
+         $(VENDOR_OBJ:.o=.d)
+
+# ---- Assets -----------------------------------------------------------------
+
+$(OUT)/assets/%: assets/% Makefile
+	@mkdir -p $(dir $@)
+	cp $< $@
 
 # ---- compile_commands.json --------------------------------------------------
 
@@ -209,10 +234,12 @@ compdb_entry = echo '{ "directory": "$(CURDIR)", "file": "$(1)", "command": "$(2
 
 # JSON allows no comma after the last entry, so sed adds a comma to the end of
 # every line except the last one ($!).
-compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC) $(GLAD_SRC)
+compile_commands.json: Makefile $(ENGINE_SRC) $(GAME_SRC) $(HOST_SRC) $(TESTS_SRC) $(GLAD_SRC) \
+                       $(STB_SRC)
 	@{ echo '['; \
 	   { $(foreach f,$(ENGINE_SRC),$(call compdb_entry,$(f),$(CXX) $(ENGINE_CXXFLAGS))) \
 	     $(foreach f,$(GAME_SRC),$(call compdb_entry,$(f),$(CXX) $(LIB_CXXFLAGS))) \
 	     $(foreach f,$(HOST_SRC) $(TESTS_SRC),$(call compdb_entry,$(f),$(CXX) $(CXXFLAGS))) \
-	     $(foreach f,$(GLAD_SRC),$(call compdb_entry,$(f),$(CC) $(GLAD_CFLAGS))) } | sed '$$!s/$$/,/'; \
+	     $(foreach f,$(GLAD_SRC),$(call compdb_entry,$(f),$(CC) $(GLAD_CFLAGS))) \
+	     $(foreach f,$(STB_SRC),$(call compdb_entry,$(f),$(CC) $(STB_CFLAGS))) } | sed '$$!s/$$/,/'; \
 	   echo ']'; } > $@

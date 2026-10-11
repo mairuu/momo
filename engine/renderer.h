@@ -1,10 +1,11 @@
 // renderer.h: everything momo draws goes through here, on OpenGL 4.6.
-// Chapter 08 explains how it starts, chapter 10 how it draws, and chapter 11
-// how the picture fits the window.
+// Chapter 08 explains how it starts, chapter 10 how it draws, chapter 11 how
+// the picture fits the window, and chapter 12 textures and text.
 #pragma once
 
 #include "base.h"
 #include "arena.h"
+#include "str.h"
 
 // Only renderer.cpp calls OpenGL. A port to another graphics API, such as
 // SDL_GPU for macOS, rewrites renderer.cpp and nothing else.
@@ -44,17 +45,56 @@ struct Color {
 // the numbers no meaning: the game names them, with an enum of its own.
 constexpr i32 MAX_LAYERS = 8;
 
-// The most rectangles one frame can draw. More is an ASSERT.
+// The most rectangles one frame can draw, sprites and letters included. More
+// is an ASSERT.
 constexpr i32 MAX_RECTS = 4096;
+
+// ---- Textures ---------------------------------------------------------------
+
+// A picture on the GPU that sprites are cut from, as a number the renderer
+// gives out: an index into its table of textures. A texture lasts for the
+// whole run, so the game can keep one in GameState, like any other number.
+//
+// The zero texture is one white pixel, which is what draw_rect draws with.
+// A texture that fails to load is the zero texture too, so its sprites come
+// out as white rectangles.
+struct Texture {
+    i32 index;
+};
+
+// The most textures momo can hold, the two the renderer makes for itself
+// included. More is an ASSERT.
+constexpr i32 MAX_TEXTURES = 64;
+
+// draw_text's chars are 8x8 pixels each.
+constexpr i32 GLYPH_SIZE = 8;
 
 namespace renderer {
 
 // ---- For the game -----------------------------------------------------------
 
-// Draws a rectangle of one color on a layer, this frame only. Works only
-// inside the game's render: the renderer forgets everything once the frame
-// is drawn, so the game draws its whole picture again every frame.
+// Loads the PNG file at path, relative to the executable's folder, such as
+// "assets/bat.png", and returns its texture. Each file is loaded once:
+// asking for the same path again returns the same texture. If the file can't
+// be loaded, logs why and returns the zero texture.
+MOMO_API Texture load_texture(const char* path);
+
+// The drawing functions work only inside the game's render, and draw on a
+// layer, this frame only: the renderer forgets everything once the frame is
+// drawn, so the game draws its whole picture again every frame.
+
+// Draws a rectangle of one color.
 MOMO_API void draw_rect(Rect rect, Color color, i32 layer);
+
+// Draws the part of texture inside source, which is in the texture's own
+// pixels, counted from its top left corner. The sprite's top left corner goes
+// at x, y on the screen, and it's the same size as source.
+MOMO_API void draw_sprite(Texture texture, Rect source, i32 x, i32 y, i32 layer);
+
+// Draws text in momo's 8x8 font, one char after another to the right of x, y,
+// in the given color. The font has the printable ASCII chars, ' ' to '~', and
+// draws any other char as '?'.
+MOMO_API void draw_text(Str text, i32 x, i32 y, Color color, i32 layer);
 
 // An opaque color, written as hex the way color pickers write it:
 // rgb(0x8e44ad) is a purple.
@@ -66,12 +106,13 @@ constexpr Color rgb(u32 hex)
 // ---- For the engine ---------------------------------------------------------
 
 // Loads OpenGL's functions, turns on its debug messages, and makes the
-// shaders and buffers the renderer draws with. Its own memory comes from
-// arena, for the rest of the run. Needs the window from platform::init.
+// shaders, buffers and textures the renderer draws with. Its own memory
+// comes from arena, for the rest of the run. Needs the window from
+// platform::init.
 bool init(Arena* arena);
 
-// Deletes what init made in OpenGL. Call it before platform::shutdown, while
-// there's still a context.
+// Deletes what init made in OpenGL, and every texture. Call it before
+// platform::shutdown, while there's still a context.
 void shutdown();
 
 // Starts a frame: clears the screen to one color and empties the batch.

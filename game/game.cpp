@@ -12,9 +12,10 @@ constexpr i32 GAME_STATE_VERSION = 1;
 // it in its own memory, so it survives a reload of this code. Game state holds
 // numbers, enums and indices only, never pointers into game.so (chapter 06).
 struct GameState {
-    i32 tick;    // ticks run since init, which counts game time (chapter 09)
-    i32 bat_x;   // pixels from the left edge of the screen
-    i32 bat_dir; // 1 flying right, -1 flying left
+    i32 tick;            // ticks run since init, which counts game time (chapter 09)
+    i32 bat_x;           // pixels from the left edge of the screen
+    i32 bat_dir;         // 1 flying right, -1 flying left
+    Texture bat_texture; // bat.png, a number the renderer gave out (chapter 12)
 };
 
 namespace game {
@@ -33,20 +34,20 @@ static_assert(LAYER_COUNT <= MAX_LAYERS, "the renderer draws at most MAX_LAYERS 
 constexpr i32 TILE_SIZE = 16;
 constexpr i32 BAT_SPEED = 1; // pixels per tick
 constexpr i32 BAT_Y = 136;   // the top of the bat, in pixels from the top of the screen
+constexpr i32 BAT_SIZE = 16; // each frame in bat.png is 16x16
 constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE; // two rows of tiles
 
 constexpr Color FLOOR_COLORS[] = { renderer::rgb(0x7c4a1e), renderer::rgb(0x5c3612) };
 constexpr Color PILLAR_COLOR = renderer::rgb(0x8a8a8a);
-constexpr Color BAT_COLOR = renderer::rgb(0x8e44ad);
-constexpr Color WING_COLOR = renderer::rgb(0x5b2c6f);
-constexpr Color EYE_COLOR = renderer::rgb(0xf4d03f);
 constexpr Color SHADOW_COLOR = { .r = 0, .g = 0, .b = 0, .a = 96 }; // black, partly see-through
+constexpr Color TEXT_COLOR = renderer::rgb(0xffffff);
 
 void init(GameState* state)
 {
     LOG_INFO("init");
     // The engine hands over a zeroed GameState, so the bat starts at x = 0.
     state->bat_dir = 1;
+    state->bat_texture = renderer::load_texture("assets/bat.png");
 }
 
 // One tick: 1/60 s of game time.
@@ -81,18 +82,22 @@ void render(const GameState* state)
     Rect pillar = { .x = 120, .y = 96, .w = TILE_SIZE, .h = FLOOR_Y - 96 };
     renderer::draw_rect(pillar, PILLAR_COLOR, LAYER_FOREGROUND);
 
-    // The bat's shadow on the floor, then the bat: a body, two wings that
-    // flap up and down every 8 ticks, and two eyes of one pixel each, the
-    // smallest thing the screen can show.
+    // The bat's shadow on the floor, then the bat. bat.png holds two frames
+    // side by side, wings up and wings down, and the bat flaps from one to
+    // the other every 8 ticks.
     i32 x = state->bat_x;
     renderer::draw_rect({ .x = x + 2, .y = FLOOR_Y, .w = 12, .h = 3 }, SHADOW_COLOR,
                         LAYER_ENTITIES);
-    i32 wing_y = (state->tick / 8) % 2 == 0 ? BAT_Y + 1 : BAT_Y + 7;
-    renderer::draw_rect({ .x = x, .y = wing_y, .w = 6, .h = 5 }, WING_COLOR, LAYER_ENTITIES);
-    renderer::draw_rect({ .x = x + 10, .y = wing_y, .w = 6, .h = 5 }, WING_COLOR, LAYER_ENTITIES);
-    renderer::draw_rect({ .x = x + 4, .y = BAT_Y + 3, .w = 8, .h = 9 }, BAT_COLOR, LAYER_ENTITIES);
-    renderer::draw_rect({ .x = x + 5, .y = BAT_Y + 5, .w = 1, .h = 1 }, EYE_COLOR, LAYER_ENTITIES);
-    renderer::draw_rect({ .x = x + 10, .y = BAT_Y + 5, .w = 1, .h = 1 }, EYE_COLOR, LAYER_ENTITIES);
+    i32 frame = (state->tick / 8) % 2;
+    Rect source = { .x = frame * BAT_SIZE, .y = 0, .w = BAT_SIZE, .h = BAT_SIZE };
+    renderer::draw_sprite(state->bat_texture, source, x, BAT_Y, LAYER_ENTITIES);
+
+    // READY, centered and blinking, as MegaMan 2 says it when a stage
+    // starts: on for 16 ticks, off for 16.
+    Str ready = STR("READY");
+    if ((state->tick / 16) % 2 == 0)
+        renderer::draw_text(ready, (SCREEN_WIDTH - ready.len * GLYPH_SIZE) / 2, 64, TEXT_COLOR,
+                            LAYER_HUD);
 }
 
 void shutdown(GameState* state)

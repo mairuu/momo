@@ -196,6 +196,25 @@ i64 file_time(const char* path)
     return info.modify_time;
 }
 
+void* read_file(const char* path, i64* size)
+{
+    // SDL asks the file for its size, mallocs that much plus one byte, reads
+    // it all in, and puts a 0 in the extra byte.
+    size_t file_size = 0;
+    void* data = SDL_LoadFile(path, &file_size);
+    if (!data) {
+        LOG_ERROR("%s", SDL_GetError());
+        return nullptr;
+    }
+    *size = (i64)file_size;
+    return data;
+}
+
+void free_file(void* data)
+{
+    SDL_free(data);
+}
+
 void* open_library(const char* path)
 {
     // On Linux, SDL calls dlopen with RTLD_NOW, so every engine function the

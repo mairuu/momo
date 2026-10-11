@@ -53,6 +53,9 @@ struct GameApi {
     i32 state_version;
     i64 state_size;
 
+    // Starts the game on a zeroed GameState, and loads what it needs, such
+    // as its textures (chapter 12). The engine calls it once the window and
+    // OpenGL are up, and again whenever it starts the game over.
     void (*init)(GameState* state);
 
     // Runs one tick: moves the game 1/60 s forward. The engine calls it 60
@@ -60,11 +63,11 @@ struct GameApi {
     // (chapter 09), so it takes no time step: every tick is the same length.
     void (*update)(GameState* state);
 
-    // Draws the game, with renderer::draw_rect. The engine calls it once
-    // per frame, after the frame's ticks, which may be none: then it draws
-    // the same picture again. The state is const, so drawing can't change
-    // the game, and the game plays the same however many frames there are
-    // (chapter 10).
+    // Draws the game, with the renderer's draw_rect, draw_sprite and
+    // draw_text. The engine calls it once per frame, after the frame's
+    // ticks, which may be none: then it draws the same picture again. The
+    // state is const, so drawing can't change the game, and the game plays
+    // the same however many frames there are (chapter 10).
     void (*render)(const GameState* state);
 
     void (*shutdown)(GameState* state);

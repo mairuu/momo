@@ -1,7 +1,8 @@
 // platform.h: everything the engine needs from the operating system: a
 // window, its events and its OpenGL context, memory, files, libraries and a
 // clock. Chapter 07 explains it, chapter 08 adds OpenGL, chapter 09 the clock
-// and vsync, and chapter 11 window sizes and display scales.
+// and vsync, chapter 11 window sizes and display scales, and chapter 12
+// reading files.
 #pragma once
 
 #include "base.h"
@@ -84,6 +85,15 @@ const char* executable_folder();
 // When the file at path was last modified, in nanoseconds since 1970, or 0
 // if there's no file there.
 i64 file_time(const char* path);
+
+// Reads the whole file at path into memory, and sets size to its size in
+// bytes. Returns null if it can't. The memory is the C library's, not an
+// arena's: give it back with free_file as soon as you're done with it
+// (chapter 12).
+void* read_file(const char* path, i64* size);
+
+// Gives back memory from read_file.
+void free_file(void* data);
 
 // Loads the shared library at path. Returns a handle to it, or null.
 void* open_library(const char* path);
