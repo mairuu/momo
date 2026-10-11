@@ -10,12 +10,16 @@ constexpr i32 GAME_STATE_VERSION = 1;
 // Everything the game remembers from one tick to the next. The engine keeps
 // it in its own memory, so it survives a reload of this code. Game state holds
 // numbers, enums and indices only, never pointers into game.so (chapter 06).
+//
+// Positions and speeds are fixed-point, in pixels and pixels per tick
+// (chapter 15). render rounds positions down to whole pixels, and nothing
+// else does.
 struct GameState {
     i32 tick;            // ticks run since init, which counts game time (chapter 09)
-    i32 bat_x;           // pixels from the left edge of the screen
-    i32 bat_dir;         // 1 flying right, -1 flying left
+    Fx2 bat_pos;         // the bat's top left corner, from the screen's top left
+    Fx2 bat_vel;         // pixels per tick: BAT_SPEED to the right or to the left
     Texture bat_texture; // bat.png, a number the renderer gave out (chapter 12)
-    i32 player_x;        // pixels from the left edge of the screen
+    Fx2 player_pos;      // the player's top left corner
     i32 power;           // the player's power, 0 to POWER_COUNT - 1, which shows as its color
 };
 
@@ -39,14 +43,13 @@ constexpr Button PREVIOUS_POWER_BUTTON = BUTTON_L;
 constexpr Button NEXT_POWER_BUTTON = BUTTON_R;
 
 constexpr i32 TILE_SIZE = 16;
-constexpr i32 BAT_SPEED = 1; // pixels per tick
+constexpr Fx BAT_SPEED = fx::from_int(1); // pixels per tick
 constexpr i32 BAT_Y = 136;   // the top of the bat, in pixels from the top of the screen
 constexpr i32 BAT_SIZE = 16; // each frame in bat.png is 16x16
 constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE; // two rows of tiles
 
-// MegaMan walks 1.375 pixels a tick, which a whole number of pixels can't
-// hold. Chapter 15 brings fractions of a pixel.
-constexpr i32 PLAYER_SPEED = 1; // pixels per tick
+// MegaMan's walking speed in MegaMan 1 and 2: 1 pixel and 96/256 a tick.
+constexpr Fx PLAYER_SPEED = fx::from_double(1.375); // pixels per tick
 constexpr i32 PLAYER_START_X = 48;
 constexpr i32 PLAYER_WIDTH = 16;
 constexpr i32 PLAYER_HEIGHT = 24;
@@ -70,28 +73,32 @@ void init(GameState* state)
 {
     LOG_INFO("init");
     // The engine hands over a zeroed GameState, so the bat starts at x = 0.
-    state->bat_dir = 1;
+    state->bat_pos.y = fx::from_int(BAT_Y);
+    state->bat_vel.x = BAT_SPEED;
     state->bat_texture = renderer::load_texture("assets/bat.png");
-    state->player_x = PLAYER_START_X;
+    state->player_pos = { .x = fx::from_int(PLAYER_START_X),
+                          .y = fx::from_int(FLOOR_Y - PLAYER_HEIGHT) };
 }
 
 // One tick: 1/60 s of game time.
 void update(GameState* state)
 {
     // Fly, and turn around at either edge of the screen.
-    state->bat_x += BAT_SPEED * state->bat_dir;
-    i32 right_edge = SCREEN_WIDTH - TILE_SIZE;
-    if (state->bat_x <= 0 || state->bat_x >= right_edge) {
-        state->bat_x = clamp(state->bat_x, 0, right_edge);
-        state->bat_dir = -state->bat_dir;
+    state->bat_pos += state->bat_vel;
+    Fx left_edge = fx::from_int(0);
+    Fx right_edge = fx::from_int(SCREEN_WIDTH - TILE_SIZE);
+    if (state->bat_pos.x <= left_edge || state->bat_pos.x >= right_edge) {
+        state->bat_pos.x = clamp(state->bat_pos.x, left_edge, right_edge);
+        state->bat_vel.x = -state->bat_vel.x;
     }
 
     // Walk while the d-pad is held left or right. Both at once cancel out.
     if (input::down(BUTTON_LEFT))
-        state->player_x -= PLAYER_SPEED;
+        state->player_pos.x -= PLAYER_SPEED;
     if (input::down(BUTTON_RIGHT))
-        state->player_x += PLAYER_SPEED;
-    state->player_x = clamp(state->player_x, 0, SCREEN_WIDTH - PLAYER_WIDTH);
+        state->player_pos.x += PLAYER_SPEED;
+    state->player_pos.x =
+        clamp(state->player_pos.x, fx::from_int(0), fx::from_int(SCREEN_WIDTH - PLAYER_WIDTH));
 
     // One power along for each press, however long the button stays down.
     if (input::pressed(NEXT_POWER_BUTTON))
@@ -122,19 +129,22 @@ void render(const GameState* state)
 
     // The bat's shadow on the floor, then the bat. bat.png holds two frames
     // side by side, wings up and wings down, and the bat flaps from one to
-    // the other every 8 ticks.
-    i32 x = state->bat_x;
+    // the other every 8 ticks. Its position rounds down to the pixel it's
+    // drawn at.
+    i32 x = fx::floor(state->bat_pos.x);
+    i32 y = fx::floor(state->bat_pos.y);
     renderer::draw_rect({ .x = x + 2, .y = FLOOR_Y, .w = 12, .h = 3 }, SHADOW_COLOR,
                         LAYER_ENTITIES);
     i32 frame = (state->tick / 8) % 2;
     Rect source = { .x = frame * BAT_SIZE, .y = 0, .w = BAT_SIZE, .h = BAT_SIZE };
-    renderer::draw_sprite(state->bat_texture, source, x, BAT_Y, LAYER_ENTITIES);
+    renderer::draw_sprite(state->bat_texture, source, x, y, LAYER_ENTITIES);
 
     // The player, standing on the floor, in its power's color. It walks
     // behind the pillar, which is in the foreground.
-    Rect player = {
-        .x = state->player_x, .y = FLOOR_Y - PLAYER_HEIGHT, .w = PLAYER_WIDTH, .h = PLAYER_HEIGHT
-    };
+    Rect player = { .x = fx::floor(state->player_pos.x),
+                    .y = fx::floor(state->player_pos.y),
+                    .w = PLAYER_WIDTH,
+                    .h = PLAYER_HEIGHT };
     renderer::draw_rect(player, POWER_COLORS[state->power], LAYER_ENTITIES);
 
     // READY, centered and blinking, as MegaMan 2 says it when a stage
@@ -147,8 +157,8 @@ void render(const GameState* state)
 
 void shutdown(GameState* state)
 {
-    LOG_INFO("shutdown, with the bat at x = %d, the player at x = %d, power %d", state->bat_x,
-             state->player_x, state->power);
+    LOG_INFO("shutdown, with the bat at x = %g, the player at x = %g, power %d",
+             fx::to_double(state->bat_pos.x), fx::to_double(state->player_pos.x), state->power);
 }
 
 } // namespace game

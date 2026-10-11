@@ -68,3 +68,4 @@ Every change to [plan.md](plan.md) and [outline.md](outline.md), oldest first. T
 | ch14 | Captures take no input | A key pressed during a capture would change its picture, which chapter 13 promised stays the same. |
 | ch14 | The overlay shows which of the pad's buttons are held | It's the first place to look when a key seems to do nothing. |
 | ch14 | The outline says chapter 14 also names the buttons for the pad and gives the game a player | Both arrived with the pad. |
+| ch15 | Added how `Fx` works: a struct with `constexpr` operators in a header, fractions written as decimals that only the compiler converts, `fx::floor` to whole pixels, and multiplies in 64 bits | Plan §4.6 named `Fx` and `Fx2` and their 24.8 format, but not how the game writes a number, turns it into pixels, or multiplies two. |
