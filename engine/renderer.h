@@ -1,6 +1,7 @@
 // renderer.h: everything momo draws goes through here, on OpenGL 4.6.
 // Chapter 08 explains how it starts, chapter 10 how it draws, chapter 11 how
-// the picture fits the window, and chapter 12 textures and text.
+// the picture fits the window, chapter 12 textures and text, and chapter 13
+// the overlay and reading the screen back.
 #pragma once
 
 #include "base.h"
@@ -69,6 +70,16 @@ constexpr i32 MAX_TEXTURES = 64;
 // draw_text's chars are 8x8 pixels each.
 constexpr i32 GLYPH_SIZE = 8;
 
+// ---- Stats ------------------------------------------------------------------
+
+// What the game drew in a frame: its rectangles, sprites and letters
+// included, and the draw calls that drew them. The overlay's own aren't
+// counted.
+struct RenderStats {
+    i32 rects;
+    i32 draw_calls;
+};
+
 namespace renderer {
 
 // ---- For the game -----------------------------------------------------------
@@ -115,12 +126,27 @@ bool init(Arena* arena);
 // platform::shutdown, while there's still a context.
 void shutdown();
 
-// Starts a frame: clears the screen to one color and empties the batch.
+// Starts a frame: clears the screen to one color and empties the batches.
+// What's drawn next goes in the game's batch.
 void begin_frame();
 
-// Draws everything drawn since begin_frame on the screen, in one draw call,
-// then copies the screen into the window at the largest whole number scale
-// that fits, with black around it.
+// Called after the game's render: what's drawn from here until end_frame
+// goes in the overlay's batch instead, which is drawn after the game's, over
+// all its layers. Its room is its own, apart from the game's MAX_RECTS.
+void begin_overlay();
+
+// Draws the frame on the screen, the game's batch and then the overlay's,
+// with one draw call per run of rectangles that share a texture, then copies
+// the screen into the window at the largest whole number scale that fits,
+// with black around it.
 void end_frame();
+
+// What the game drew in the last frame that ended.
+RenderStats last_frame_stats();
+
+// Copies the screen as the last end_frame left it into rgb, which has room
+// for SCREEN_WIDTH * SCREEN_HEIGHT pixels of 3 bytes, red, green and blue,
+// top row first. It waits for the GPU to finish drawing the frame.
+void read_screen(u8* rgb);
 
 } // namespace renderer

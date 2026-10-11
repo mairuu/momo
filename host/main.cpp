@@ -1,10 +1,11 @@
-// main.cpp: the momo executable. All it does is hand control to the engine.
-// Chapter 02 explains why the engine isn't the executable itself.
+// main.cpp: the momo executable. All it does is hand control to the engine,
+// along with its command line. Chapter 02 explains why the engine isn't the
+// executable itself.
 #include "momo.h"
 
-int main()
+int main(int argc, char** argv)
 {
-    return momo::run();
+    return momo::run(argc, argv);
 }
 
 // GCC defines __SANITIZE_ADDRESS__ when it builds with AddressSanitizer,

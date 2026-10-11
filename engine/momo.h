@@ -14,10 +14,11 @@
 
 namespace momo {
 
-// Loads game.so, opens the window, and runs the game until it calls quit(),
-// the window is closed, or you press Ctrl+C, reloading game.so whenever it
-// changes. Returns the exit code for main().
-MOMO_API i32 run();
+// Reads the command line main() was given (chapter 13), loads game.so,
+// opens the window, and runs the game until it calls quit(), the window is
+// closed, or you press Ctrl+C, reloading game.so whenever it changes.
+// Returns the exit code for main(): 0, or 1 if anything failed.
+MOMO_API i32 run(i32 argc, char** argv);
 
 // Stops the loop once the current frame is done.
 MOMO_API void quit();

@@ -29,6 +29,7 @@ The book is append-only, and so is this plan. When a later chapter changes a dec
 | The current chapter can still change until the next one starts. After that, only bug and typo fixes. | Keeps append-only from locking in a mistake you spotted while reading. |
 | Small chapters, one idea each, about 15–25 minutes, always ending with something you can run | Reading always ends with seeing the code work. |
 | One chapter per request | Your feedback shapes the next chapter. |
+| *Added in ch13:* The book's pictures are `--capture` files in `book/images/`, at the screen's 256×240, and each chapter gives the command that made each one | They're the game's own pixels, the same on every display, and you can make each one again and compare it with `cmp`. |
 
 **Every chapter has these parts:** Goal (what you'll see at the end) → Problem (why the engine needs this now) → Design (the options, the pick, and why) → Code (key excerpts with `file:line`, not whole files) → Run it (exact commands, what to look for) → Recap (updated module map) → Exercises (optional).
 
@@ -132,6 +133,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch06:* The engine declares `GameState` but never defines it | It passes the game's state along without being able to depend on what's inside. |
 | *Added in ch06:* Only `game.so` reloads. A change to the engine or to `momo.h` needs a restart. | The running engine can't be swapped, and both sides must agree on `momo.h`. |
 | *Added in ch10:* The game draws only in `render`, which runs once per frame after the ticks and gets a `const GameState*`. Drawing outside it is an `ASSERT`. | A frame runs any number of ticks, so drawing in `update` would draw some frames twice and others not at all. A `const` state means drawing can't change the game, so it plays the same at any frame rate (§4.3). |
+| *Added in ch13:* The host passes its command line to `momo::run`, and the engine reads it before anything else. An option it doesn't know stops momo with the usage line. | The engine owns `main()`, and the host stays one line. A mistyped option should fail, not be ignored. |
 
 ### 4.2 Memory
 
@@ -143,10 +145,11 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch04:* An arena doesn't own its block. A push aligns the address (not the offset), zeroes what it returns, and `ASSERT`s when full. | Zeroing in push keeps "push returns zeros" true after a reset, and reset stays one line. Aligning the address works for any block, including a test's stack buffer. |
 | *Added in ch04:* Each arena is sized generously for an NES-style game | Untouched pages are nearly free. One block is one `mmap` call and, in chapter 21, one copy. |
 | *Added in ch04:* The engine resets the frame arena at the start of every frame. The game resets the stage arena itself, and reaches all three arenas through engine functions. | Memory pushed during a frame stays valid for the rest of that frame. Only the game knows when a stage loads (§5). Engine state stays in the engine (§4.1). |
-| *Added in ch04:* Until the debug overlay (chapter 13), the engine prints each arena's peak when it quits | The sizes can be checked against real use. |
+| *Added in ch04:* Until the debug overlay (chapter 13), the engine prints each arena's peak when it quits. **Changed in ch13** (last row). | The sizes can be checked against real use. |
 | *Added in ch04:* ASan can't see inside an arena. Containers check their indices with `ASSERT` instead. | ASan only tracks `malloc`, stack and global memory. Its manual poisoning interface is the fallback if this ever bites. |
 | *Changed in ch06:* A fourth arena belongs to the engine, and the game can't reach it. Permanent and stage hold only the game's memory, side by side at the start of the block, and the engine resets both when `GameState`'s layout changes. | The reset would wipe anything the engine kept in the permanent arena. Chapter 21's snapshots should copy all of the game's memory and none of the engine's, in one piece. |
 | *Added in ch12:* A file's bytes and its decoded pixels come from `malloc`, SDL's and stb_image's, and are given back before the function that loaded them returns | They're needed only until OpenGL has copied the pixels. The engine's arena is never reset, and the frame arena is the game's. AddressSanitizer checks `malloc`'s memory. |
+| *Changed in ch13:* The overlay shows the peaks of the game's three arenas while it runs, and the engine still prints all four when it quits. The overlay's text is formatted in an arena on the stack. | The log stays after the window is gone, and the chapters quote it. The engine's own arena isn't the game's to watch. The frame arena is the game's, and its peak is one of the overlay's lines. |
 
 ### 4.3 The frame
 
@@ -162,6 +165,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch09:* Each frame runs one tick for every whole 1/60 s since the last frame, and owes the rest to the next. Time is integer nanoseconds from SDL's monotonic clock, passed to the timestep's arithmetic instead of read by it. | Integers are exact, and an `i64` of nanoseconds lasts 292 years. Tests hand the timestep made-up times, so a second of frames takes no time to test and needs no SDL. |
 | *Added in ch09:* A frame runs at most 6 ticks (100 ms). Time over the cap is dropped, not owed, and logged. | On Wayland, SDL stops waiting for the compositor after 50 ms, so a window that's opening or hidden draws 20 frames a second, and those must keep full speed. A slower frame is a stall, and catching up would make the game race. |
 | *Added in ch09:* The game counts its own ticks in `GameState`. The engine gives it no clock, no frame count and no time step. | The game's logic must depend only on `GameState` and its inputs. Chapter 21's replays rewind only the game's memory, so anything else would make a replay go differently. |
+| *Added in ch13:* The overlay counts frames and ticks over a second of game time: the frame that runs the second's 60th tick ends it, or 2 s of real time if the game runs fewer. A frame's **work** is its time before the swap. | A second of real time ends between ticks, and read 61 ticks in 5 of 29 seconds with every frame on time. With vsync, every frame lasts as long as the display's refresh, so only the work says what a frame cost. |
 
 ### 4.4 Platform and input
 
@@ -175,6 +179,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch07:* Closing the window, Ctrl+C and `kill` all become SDL's quit event, the loop's one way out. momo's own `SIGINT` handler is gone. | SDL installs the signal handlers itself, and a window adds a second way to quit. |
 | *Added in ch11:* The window is resizable, and resizing needs no event: the renderer asks SDL for the window's size in pixels every frame. The game never learns the window's size. | SDL keeps the size current while it handles events, so asking can't fall out of step. It also catches a move to a display with another scale, which changes the pixels but not the points. |
 | *Added in ch12:* `platform::read_file` reads a whole file through SDL | Reading files is the platform's job, like their times. stb_image decodes bytes it's handed and never opens a file. |
+| *Added in ch13:* The engine has keys of its own, which the game never sees. `platform::handle_events` reports that a key went down, by its place on the keyboard, and the engine decides what it does: `` ` ``, left of 1, shows and hides the overlay. | A debug key isn't a button on the game's pad (chapter 14). The platform reports the key, and its meaning is the engine's. |
 
 ### 4.5 Rendering
 
@@ -204,6 +209,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch12:* A `Texture` is an index into the renderer's table, at most 64. Each file is loaded once, for the whole run, and asking again returns the same texture. A file that can't be loaded logs why and returns texture 0. | `GameState` holds numbers (§3.2). A game that starts over gets back the numbers it had without reading a file, and chapter 33 can reload a file under the same number. A missing picture shows as a white rectangle. |
 | *Added in ch12:* `draw_sprite` has no flags yet | Flipping comes when the player faces left (chapter 29). The bat looks the same both ways. |
 | *Added in ch12:* The 8×8 font is the engine's: the 95 printable ASCII glyphs, in code (`font8x8`, public domain), made into a texture when the renderer starts. `draw_text` draws one sprite per char, and any other char as `?`. | It needs no file, so chapter 13's overlay works even when the game's files don't. The game draws text with it too. |
+| *Added in ch13:* The debug overlay draws on the screen, after the game's `render`, into a batch of its own that holds 1,024 rectangles. The renderer sorts both batches into one array, the game's first, and draws it in runs as before. | It ends up on top whatever layers the game uses, it can't push the game past its 4,096 rectangles, and the counts it shows are the game's alone. Drawing after the copy into the window would need a second set of coordinates. |
+| *Added in ch13:* `read_screen` reads the screen's red, green and blue, top row first | OpenGL's rows start at the bottom, and blending leaves the screen's alpha below 255 under see-through rectangles: 195 under the shadow. |
 
 ### 4.6 Numbers
 
@@ -250,6 +257,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch03:* Test programs link the engine as a static archive, built from the same object files as `libmomo.so` | A test gets only the engine code it uses, so the arena test won't need SDL, and it can call functions that aren't `MOMO_API`. |
 | *Added in ch03:* `make test` runs every test program on the debug build, then fails if any of them failed | Every failure shows up in one run, and the sanitizers catch memory bugs and UB, not only wrong answers. |
 | *Added in ch07:* The debug build's executable tells LeakSanitizer to skip leaks whose call stack passes through `libSDL3.so`, and LeakSanitizer lists what it skipped at every exit | The graphics driver keeps memory that only its own globals point to, so it looks leaked once `SDL_Quit` unloads the driver. momo's own memory comes from arenas. The list keeps the suppression in sight. |
+| *Added in ch13:* The debug overlay shows frames and ticks a second, each frame's work, the game's rectangles and draw calls in the last frame, and the peaks of its arenas. It's hidden until `` ` `` is pressed, or `--overlay` is given. | Each line answers a question earlier chapters needed an outside tool or a throwaway patch for. |
+| *Added in ch13:* `--capture TICK FILE` runs the game to that tick, at its usual speed, saves the 256×240 screen as a PNG file, and quits. Failing to save makes momo exit with 1. | The game depends only on its ticks (§4.3), so the same command saves the same file on every run, on any display. Seconds or frames would land on a different tick each time. |
 
 ## 5. Game
 
@@ -288,9 +297,10 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch03:* Test programs are built and listed in `compile_commands.json` like the host | They're executables too. |
 | SDL3 from the system through `pkg-config` | Already installed (3.4). |
 | *Added in ch07:* Only the engine gets SDL's compile and link flags | The host and the game never call SDL. With `--no-undefined`, a game that tries fails to link. |
-| Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
+| Copied into `third_party/` with pinned versions and licenses: glad, stb_image, stb_image_write, stb_vorbis, a JSON library, and Dear ImGui later. **Changed in ch13** (stb_image_write, below). | Libraries handle file formats, GL loading and debug UI. We write everything that's a learning goal. |
 | *Added in ch08:* glad is generated once, by a pinned glad version with `--reproducible`, and its output is committed with a README that records the command. Vendored C code is compiled as C, and the flags that pick a build config apply to both languages. | Building momo needs no Python, and the same command always writes the same files. |
 | *Added in ch12:* stb_image 2.30 is copied as released, with its commit and checksum in a README, and compiled once, in momo's `stb_image.c`, for PNG only and without `fopen` | Pinned like glad. PNG is all momo loads, and reading files is the platform's job (§4.4). |
+| *Changed in ch13:* PNG files are written by SDL 3.4's `SDL_SavePNG`, through `platform::write_png`, and stb_image_write isn't vendored. stb_image still reads them. | `platform::` uses SDL wherever SDL has the function (§4.4). Only the compressed bytes depend on SDL's version, never the pixels. `SDL_LoadPNG` returns each file in its own format, and chapter 30's bake tool needs a PNG reader without SDL. |
 | *Added after ch09:* `.clang-format` describes the style the code already had: WebKit style, 100 columns. `make format` applies it. `.editorconfig` gives other editors the indents and line endings. | Neovim formats with clang-format, and its default style would have rewritten nearly every line. |
 | *Added after ch09:* `make lint` fails on unformatted code and on any clang-tidy finding. The checks are picked by hand: the analyzer, `bugprone`, §3.4's naming rules, and no globals in `game/` (§3.2). An exception gets a `NOLINT` comment that says why. | Lint helps only while it stays at zero findings. `cppcoreguidelines` and `modernize` are left out because they flag C-style casts, raw pointers and the lack of RAII, which §3.1 chose on purpose. |
 | Git stays local for now. Code and book licenses get decided when publishing. | Nothing depends on that choice yet. |

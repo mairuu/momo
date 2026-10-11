@@ -1,5 +1,6 @@
 // platform.cpp: the engine's one connection to the operating system, mostly
-// through SDL3. Chapter 07 explains it.
+// through SDL3. Chapter 07 explains it, and the chapters after it each add
+// what they need.
 #include "platform.h"
 #include "logger.h"
 
@@ -101,22 +102,32 @@ void shutdown()
     SDL_Quit();
 }
 
-bool handle_events()
+Events handle_events()
 {
     // SDL collects events in a queue as they happen, and SDL_PollEvent takes
     // them out one at a time until the queue is empty. Closing the window
-    // and Ctrl+C both end up as SDL_EVENT_QUIT. Every other event is
-    // ignored for now. That includes resizing: SDL keeps the window's size
+    // and Ctrl+C both end up as SDL_EVENT_QUIT. Every event not handled here
+    // is ignored for now. That includes resizing: SDL keeps the window's size
     // up to date as it handles the events, and the renderer asks for it
     // every frame (chapter 11).
+    Events events = {};
     SDL_Event event = {};
     while (SDL_PollEvent(&event)) {
         if (event.type == SDL_EVENT_QUIT) {
             LOG_INFO("quit requested");
-            return false; // the rest of the queue doesn't matter now
+            events.quit = true;
+            return events; // the rest of the queue doesn't matter now
         }
+
+        // A key's scancode is its place on the keyboard, whatever the layout
+        // prints on it: SDL_SCANCODE_GRAVE is the key left of 1, ` on a US
+        // keyboard. A key held down sends key-down events again and again,
+        // marked repeat, and only the first one is a press.
+        bool key_down = event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat;
+        if (key_down && event.key.scancode == SDL_SCANCODE_GRAVE)
+            events.backquote_pressed = true;
     }
-    return true;
+    return events;
 }
 
 void window_size_in_pixels(i32* width, i32* height)
@@ -213,6 +224,29 @@ void* read_file(const char* path, i64* size)
 void free_file(void* data)
 {
     SDL_free(data);
+}
+
+bool write_png(const char* path, i32 width, i32 height, const u8* rgb)
+{
+    // A surface is SDL's picture in memory. SDL_CreateSurfaceFrom wraps
+    // pixels that are already there instead of copying them: RGB24 is 3
+    // bytes a pixel, red first, and each row is width * 3 bytes after the
+    // last. SDL takes the pixels as non-const, since a surface can be drawn
+    // on, but saving only reads them.
+    SDL_Surface* surface =
+        SDL_CreateSurfaceFrom(width, height, SDL_PIXELFORMAT_RGB24, (void*)rgb, width * 3);
+    if (!surface) {
+        LOG_ERROR("%s", SDL_GetError());
+        return false;
+    }
+
+    // SDL_SavePNG is new in SDL 3.4: it compresses the pixels and writes
+    // the file. Its error says which file and why, like SDL_LoadFile's.
+    bool saved = SDL_SavePNG(surface, path);
+    if (!saved)
+        LOG_ERROR("%s", SDL_GetError());
+    SDL_DestroySurface(surface); // the surface only, not the pixels it wrapped
+    return saved;
 }
 
 void* open_library(const char* path)

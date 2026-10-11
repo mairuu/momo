@@ -34,10 +34,17 @@ bool init(const char* title, i32 width, i32 height);
 // Closes the OpenGL context and the window, and stops SDL.
 void shutdown();
 
-// Handles every event that arrived since the last call. Returns false once
-// momo should quit: the window was closed, or Ctrl+C was pressed in the
-// terminal.
-bool handle_events();
+// What happened since the last handle_events, of what the engine acts on.
+// Keys are the engine's own, never the game's: the game gets its buttons from
+// chapter 14's input.
+struct Events {
+    bool quit;              // the window was closed, or Ctrl+C was pressed in the terminal
+    bool backquote_pressed; // the ` key, left of 1, went down
+};
+
+// Handles every event that arrived since the last call, and returns what
+// the engine needs to know about them.
+Events handle_events();
 
 // The window's size in pixels right now: what OpenGL draws into, and what
 // the renderer fits the screen into. It changes whenever the window is
@@ -94,6 +101,10 @@ void* read_file(const char* path, i64* size);
 
 // Gives back memory from read_file.
 void free_file(void* data);
+
+// Saves width x height pixels as a PNG file at path, replacing any file
+// there. rgb holds 3 bytes per pixel, red, green and blue, top row first.
+bool write_png(const char* path, i32 width, i32 height, const u8* rgb);
 
 // Loads the shared library at path. Returns a handle to it, or null.
 void* open_library(const char* path);

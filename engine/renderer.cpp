@@ -1,6 +1,7 @@
 // renderer.cpp: momo's drawing, on OpenGL 4.6. Chapter 08 explains how it
 // starts OpenGL, chapter 10 how it draws, chapter 11 how the screen fits the
-// window, and chapter 12 textures and text.
+// window, chapter 12 textures and text, and chapter 13 the overlay and
+// reading the screen back.
 #include "renderer.h"
 #include "batch.h"
 #include "font.h"
@@ -104,6 +105,14 @@ constexpr u32 SPRITE_TEXTURE_UNIT = 0;
 constexpr Texture WHITE_TEXTURE = { .index = 0 }; // one white pixel, for draw_rect
 constexpr Texture FONT_TEXTURE = { .index = 1 };  // momo's 8x8 font, for draw_text
 
+// The most rectangles the overlay can draw in a frame, apart from the game's
+// MAX_RECTS: a screen's worth of letters, 32 by 30, plus their backdrop, fits
+// with room to spare.
+constexpr i32 MAX_OVERLAY_RECTS = 1024;
+
+// Room for a frame's rectangles: the game's and the overlay's.
+constexpr i32 MAX_FRAME_RECTS = MAX_RECTS + MAX_OVERLAY_RECTS;
+
 // ---- The renderer's state ---------------------------------------------------
 
 // A texture the renderer has made: OpenGL's number for it, and the file it
@@ -120,10 +129,13 @@ static Arena* arena;             // the engine's, for the rest of the run
 static u32 program;              // the two shaders, linked together
 static u32 rect_buffer;          // the frame's rectangles, on the GPU
 static u32 vertex_array;         // how the vertex shader reads rect_buffer
-static Batch batch;              // the frame's rectangles, as the game drew them
-static RectInstance* sorted;     // the same rectangles, in drawing order
+static Batch game_batch;         // the frame's rectangles, as the game drew them
+static Batch overlay_batch;      // and the overlay's, drawn after the game's
+static Batch* drawing_into;      // the batch draw_rect and the rest add to
+static RectInstance* sorted;     // all of the frame's rectangles, in drawing order
 static Texture* sorted_textures; // and each one's texture
 static DrawCall* calls;          // the draw calls that draw them
+static RenderStats stats;        // what the game drew in the last frame
 static bool in_frame;            // between begin_frame and end_frame
 static u32 screen_texture;       // the 256x240 screen, which the game draws on
 static u32 screen_framebuffer;   // what lets OpenGL draw into screen_texture
@@ -378,16 +390,18 @@ bool init(Arena* engine_arena)
     // DSA again: glProgramUniform names the program, so it needn't be bound.
     glProgramUniform2f(program, SCREEN_SIZE_UNIFORM, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    // Room for a frame's rectangles three times over: as the game draws
-    // them, in drawing order, and on the GPU, plus the draw calls, at most
-    // one per rectangle. The GPU's buffer keeps its size for good (Storage),
-    // and the CPU can rewrite it every frame (DYNAMIC_STORAGE).
-    batch::init(&batch, arena, MAX_RECTS);
-    sorted = arena::push_array<RectInstance>(arena, MAX_RECTS);
-    sorted_textures = arena::push_array<Texture>(arena, MAX_RECTS);
-    calls = arena::push_array<DrawCall>(arena, MAX_RECTS);
+    // Room for a frame's rectangles three times over: as the game and the
+    // overlay draw them, in drawing order, and on the GPU, plus the draw
+    // calls, at most one per rectangle. The GPU's buffer keeps its size for
+    // good (Storage), and the CPU can rewrite it every frame
+    // (DYNAMIC_STORAGE).
+    batch::init(&game_batch, arena, MAX_RECTS);
+    batch::init(&overlay_batch, arena, MAX_OVERLAY_RECTS);
+    sorted = arena::push_array<RectInstance>(arena, MAX_FRAME_RECTS);
+    sorted_textures = arena::push_array<Texture>(arena, MAX_FRAME_RECTS);
+    calls = arena::push_array<DrawCall>(arena, MAX_FRAME_RECTS);
     glCreateBuffers(1, &rect_buffer);
-    glNamedBufferStorage(rect_buffer, MAX_RECTS * sizeof(RectInstance), nullptr,
+    glNamedBufferStorage(rect_buffer, MAX_FRAME_RECTS * sizeof(RectInstance), nullptr,
                          GL_DYNAMIC_STORAGE_BIT);
 
     // The vertex array says where the vertex shader's inputs come from.
@@ -466,7 +480,9 @@ void begin_frame()
 {
     ASSERT(!in_frame);
     in_frame = true;
-    batch::clear(&batch);
+    batch::clear(&game_batch);
+    batch::clear(&overlay_batch);
+    drawing_into = &game_batch;
 
     // Direct state access (DSA): the call names the framebuffer it clears,
     // and takes the color, instead of clearing whatever is bound with
@@ -484,7 +500,7 @@ void draw_rect(Rect rect, Color color, i32 layer)
         .source = { .x = 0, .y = 0, .w = 1, .h = 1 }, // all of the white pixel
         .color = color,
     };
-    batch::add(&batch, instance, WHITE_TEXTURE, layer);
+    batch::add(drawing_into, instance, WHITE_TEXTURE, layer);
 }
 
 void draw_sprite(Texture texture, Rect source, i32 x, i32 y, i32 layer)
@@ -496,7 +512,7 @@ void draw_sprite(Texture texture, Rect source, i32 x, i32 y, i32 layer)
         .source = source,
         .color = rgb(0xffffff), // the texture's own colors
     };
-    batch::add(&batch, instance, texture, layer);
+    batch::add(drawing_into, instance, texture, layer);
 }
 
 void draw_text(Str text, i32 x, i32 y, Color color, i32 layer)
@@ -510,17 +526,37 @@ void draw_text(Str text, i32 x, i32 y, Color color, i32 layer)
             .source = font::glyph(text.data[i]),
             .color = color,
         };
-        batch::add(&batch, instance, FONT_TEXTURE, layer);
+        batch::add(drawing_into, instance, FONT_TEXTURE, layer);
     }
 }
 
-// Draws the batch on the screen: one draw call for each run of rectangles in
-// a row, in drawing order, that use the same texture.
-static void draw_batch()
+void begin_overlay()
 {
-    batch::sort(batch, sorted, sorted_textures);
-    i32 call_count = batch::draw_calls(sorted_textures, batch.count, calls);
-    glNamedBufferSubData(rect_buffer, 0, batch.count * (i64)sizeof(RectInstance), sorted);
+    ASSERT(in_frame && drawing_into == &game_batch);
+    drawing_into = &overlay_batch;
+}
+
+// Draws the frame's rectangles on the screen: one draw call for each run of
+// rectangles in a row, in drawing order, that use the same texture.
+static void draw_batches()
+{
+    // Both batches go into one array in drawing order, the overlay's after
+    // the game's, so it comes out on top of every layer the game drew. The
+    // game's draw calls are counted for the overlay before the overlay's
+    // rectangles join them.
+    i32 game_count = game_batch.count;
+    i32 count = game_count + overlay_batch.count;
+    batch::sort(game_batch, sorted, sorted_textures);
+    batch::sort(overlay_batch, sorted + game_count, sorted_textures + game_count);
+    stats = {
+        .rects = game_count,
+        .draw_calls = batch::draw_calls(sorted_textures, game_count, calls),
+    };
+    if (count == 0)
+        return;
+
+    i32 call_count = batch::draw_calls(sorted_textures, count, calls);
+    glNamedBufferSubData(rect_buffer, 0, count * (i64)sizeof(RectInstance), sorted);
 
     // Drawing has no DSA version: it draws into whatever framebuffer is
     // bound, with whatever program and vertex array are bound. They're
@@ -576,9 +612,42 @@ void end_frame()
 {
     ASSERT(in_frame);
     in_frame = false;
-    if (batch.count > 0)
-        draw_batch();
+    draw_batches();
     present_screen();
+}
+
+RenderStats last_frame_stats()
+{
+    return stats;
+}
+
+void read_screen(u8* rgb)
+{
+    ASSERT(!in_frame); // the screen holds a whole frame only after end_frame
+
+    // Three bytes a pixel, leaving out alpha. The screen shows as opaque,
+    // but its alpha isn't 255 everywhere: blending (chapter 10) mixes alpha
+    // like the colors, so a see-through rectangle lowers it, and a PNG with
+    // that alpha would be see-through there too. A row of 256 pixels is 768
+    // bytes, a multiple of 4: OpenGL starts each row it hands back at a
+    // multiple of 4 bytes, unless told otherwise, so there are no gaps.
+    //
+    // OpenGL draws the frame on the GPU after the calls that asked for it
+    // return. To hand back the pixels, it first waits for that to finish.
+    constexpr i32 ROW_SIZE = SCREEN_WIDTH * 3;
+    glGetTextureImage(screen_texture, 0, GL_RGB, GL_UNSIGNED_BYTE, SCREEN_HEIGHT * ROW_SIZE, rgb);
+
+    // OpenGL's rows start at the bottom: the vertex shader turns y around
+    // (chapter 10), so the screen's top row is OpenGL's last. Swapping rows
+    // from the outside in puts the top first.
+    for (i32 y = 0; y < SCREEN_HEIGHT / 2; y++) {
+        u8* top = rgb + (i64)y * ROW_SIZE;
+        u8* bottom = rgb + (i64)(SCREEN_HEIGHT - 1 - y) * ROW_SIZE;
+        u8 row[ROW_SIZE];
+        memcpy(row, top, ROW_SIZE);
+        memcpy(top, bottom, ROW_SIZE);
+        memcpy(bottom, row, ROW_SIZE);
+    }
 }
 
 } // namespace renderer
