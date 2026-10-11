@@ -27,7 +27,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 13 Debug Text and Capture: the overlay, `--capture`. *Changed in ch13:* also gives momo a command line, and the engine its first key, `` ` ``, ahead of chapter 14's input.
 
 **D. Moving things**
-- 14 Input: the virtual pad, keyboard and gamepad, latching to ticks
+- 14 Input: the virtual pad, keyboard and gamepad, latching to ticks. *Changed in ch14:* the pad's buttons are named for where they are, and the game names what they do. Also gives the game its first player, who walks and changes power.
 - 15 Fixed-Point: `Fx`, `Fx2`, tests
 - *Appendix A: `design.md` is drafted here*
 - 16 Entities: `Entity`, `kind`, `Pool<T>`, generational handles, `switch` dispatch

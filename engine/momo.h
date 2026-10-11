@@ -6,6 +6,7 @@
 
 #include "base.h"
 #include "arena.h"
+#include "input.h"
 #include "logger.h"
 #include "renderer.h"
 #include "str.h"
@@ -62,6 +63,8 @@ struct GameApi {
     // Runs one tick: moves the game 1/60 s forward. The engine calls it 60
     // times a second, however many frames a second the display shows
     // (chapter 09), so it takes no time step: every tick is the same length.
+    // It reads the pad with input::down, pressed and released (chapter 14),
+    // which work only here.
     void (*update)(GameState* state);
 
     // Draws the game, with the renderer's draw_rect, draw_sprite and

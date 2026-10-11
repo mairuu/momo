@@ -14,14 +14,79 @@ namespace platform {
 static SDL_Window* window;
 static SDL_GLContext gl_context; // OpenGL's state for the window (chapter 08)
 
+// ---- The pad's keys and gamepads (chapter 14) -------------------------------
+
+// Which key drives which of the pad's buttons. A key is its scancode, its
+// place on the keyboard whatever the layout prints on it (chapter 13): on a
+// French keyboard, B and A are the keys marked W and X.
+struct KeyButton {
+    SDL_Scancode key;
+    Button button;
+};
+
+// The arrows are the d-pad. Z and X are B and A, side by side as on the NES
+// pad, with the shoulder buttons above them on Q and W. Enter is Start, and
+// the right Shift, below it, is Select.
+constexpr KeyButton KEY_BUTTONS[] = {
+    { .key = SDL_SCANCODE_X, .button = BUTTON_A },
+    { .key = SDL_SCANCODE_Z, .button = BUTTON_B },
+    { .key = SDL_SCANCODE_RSHIFT, .button = BUTTON_SELECT },
+    { .key = SDL_SCANCODE_RETURN, .button = BUTTON_START },
+    { .key = SDL_SCANCODE_UP, .button = BUTTON_UP },
+    { .key = SDL_SCANCODE_DOWN, .button = BUTTON_DOWN },
+    { .key = SDL_SCANCODE_LEFT, .button = BUTTON_LEFT },
+    { .key = SDL_SCANCODE_RIGHT, .button = BUTTON_RIGHT },
+    { .key = SDL_SCANCODE_Q, .button = BUTTON_L },
+    { .key = SDL_SCANCODE_W, .button = BUTTON_R },
+};
+
+// Which gamepad button drives which of the pad's buttons. SDL names a
+// gamepad's four face buttons by where they are, since where an Xbox pad has
+// A, a PlayStation pad has its cross and a Nintendo pad its B. West and south
+// are B and A: B to the left of A, as on the NES pad. The left stick drives
+// the d-pad too (input::stick_directions).
+struct GamepadButton {
+    SDL_GamepadButton gamepad_button;
+    Button button;
+};
+
+constexpr GamepadButton GAMEPAD_BUTTONS[] = {
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_SOUTH, .button = BUTTON_A },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_WEST, .button = BUTTON_B },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_BACK, .button = BUTTON_SELECT },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_START, .button = BUTTON_START },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_DPAD_UP, .button = BUTTON_UP },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_DPAD_DOWN, .button = BUTTON_DOWN },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_DPAD_LEFT, .button = BUTTON_LEFT },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_DPAD_RIGHT, .button = BUTTON_RIGHT },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_LEFT_SHOULDER, .button = BUTTON_L },
+    { .gamepad_button = SDL_GAMEPAD_BUTTON_RIGHT_SHOULDER, .button = BUTTON_R },
+};
+
+// The keys in KEY_BUTTONS that are held right now, one per row of the table.
+static bool keys_held[ARRAY_COUNT(KEY_BUTTONS)];
+
+// A gamepad that's plugged in, and what's held on it.
+struct Gamepad {
+    SDL_Gamepad* gamepad; // null for a free slot
+    SDL_JoystickID id;    // SDL's number for it, which its events carry
+    bool buttons_held[ARRAY_COUNT(GAMEPAD_BUTTONS)];
+    i32 stick_x; // the left stick, from -32768 to 32767
+    i32 stick_y;
+};
+
+constexpr i32 MAX_GAMEPADS = 4;
+static Gamepad gamepads[MAX_GAMEPADS];
+
 // ---- The window -------------------------------------------------------------
 
 bool init(const char* title, i32 width, i32 height)
 {
     // Starting SDL's video starts its events too, and SDL then handles Ctrl+C
     // (the signal SIGINT) and kill's SIGTERM itself: either one becomes a
-    // quit event, which handle_events sees.
-    if (!SDL_Init(SDL_INIT_VIDEO)) {
+    // quit event, which handle_events sees. Gamepads already plugged in
+    // arrive as events too, as if they had just been plugged in.
+    if (!SDL_Init(SDL_INIT_VIDEO | SDL_INIT_GAMEPAD)) {
         LOG_ERROR("can't start SDL: %s", SDL_GetError());
         return false;
     }
@@ -95,6 +160,11 @@ bool init(const char* title, i32 width, i32 height)
 
 void shutdown()
 {
+    for (Gamepad& gamepad : gamepads) {
+        if (gamepad.gamepad)
+            SDL_CloseGamepad(gamepad.gamepad);
+        gamepad = {};
+    }
     SDL_GL_DestroyContext(gl_context);
     gl_context = nullptr;
     SDL_DestroyWindow(window);
@@ -102,30 +172,127 @@ void shutdown()
     SDL_Quit();
 }
 
-Events handle_events()
+// The gamepad SDL numbers id, or null if momo didn't open it.
+static Gamepad* find_gamepad(SDL_JoystickID id)
+{
+    for (Gamepad& gamepad : gamepads) {
+        if (gamepad.gamepad && gamepad.id == id)
+            return &gamepad;
+    }
+    return nullptr;
+}
+
+static void open_gamepad(SDL_JoystickID id)
+{
+    for (Gamepad& gamepad : gamepads) {
+        if (gamepad.gamepad)
+            continue;
+        gamepad.gamepad = SDL_OpenGamepad(id);
+        if (!gamepad.gamepad) {
+            LOG_ERROR("can't open a gamepad: %s", SDL_GetError());
+            return;
+        }
+        gamepad.id = id;
+        LOG_INFO("gamepad connected: %s", SDL_GetGamepadName(gamepad.gamepad));
+        return;
+    }
+    LOG_WARN("ignoring %s: momo uses at most %d gamepads", SDL_GetGamepadNameForID(id),
+             MAX_GAMEPADS);
+}
+
+static void close_gamepad(SDL_JoystickID id)
+{
+    Gamepad* gamepad = find_gamepad(id);
+    if (!gamepad)
+        return; // one momo ignored
+    LOG_INFO("gamepad disconnected: %s", SDL_GetGamepadName(gamepad->gamepad));
+    SDL_CloseGamepad(gamepad->gamepad);
+    *gamepad = {}; // whatever it held is let go
+}
+
+// Every button held on the keyboard or on any gamepad. The pad's button is
+// down wherever it's held, and up only once it's let go everywhere.
+static Buttons held_buttons()
+{
+    Buttons held = 0;
+    for (i32 i = 0; i < ARRAY_COUNT(KEY_BUTTONS); i++) {
+        if (keys_held[i])
+            held |= input::bit(KEY_BUTTONS[i].button);
+    }
+    for (const Gamepad& gamepad : gamepads) {
+        for (i32 i = 0; i < ARRAY_COUNT(GAMEPAD_BUTTONS); i++) {
+            if (gamepad.buttons_held[i])
+                held |= input::bit(GAMEPAD_BUTTONS[i].button);
+        }
+        held |= input::stick_directions(gamepad.stick_x, gamepad.stick_y);
+    }
+    return held;
+}
+
+Events handle_events(Pad* pad)
 {
     // SDL collects events in a queue as they happen, and SDL_PollEvent takes
     // them out one at a time until the queue is empty. Closing the window
     // and Ctrl+C both end up as SDL_EVENT_QUIT. Every event not handled here
-    // is ignored for now. That includes resizing: SDL keeps the window's size
-    // up to date as it handles the events, and the renderer asks for it
-    // every frame (chapter 11).
+    // is ignored. That includes resizing: SDL keeps the window's size up to
+    // date as it handles the events, and the renderer asks for it every
+    // frame (chapter 11).
     Events events = {};
     SDL_Event event = {};
     while (SDL_PollEvent(&event)) {
-        if (event.type == SDL_EVENT_QUIT) {
+        switch (event.type) {
+        case SDL_EVENT_QUIT:
             LOG_INFO("quit requested");
             events.quit = true;
             return events; // the rest of the queue doesn't matter now
+
+        case SDL_EVENT_KEY_DOWN:
+        case SDL_EVENT_KEY_UP:
+            // A key held down sends key-down events again and again, marked
+            // repeat. For the pad's keys, a repeat changes nothing: the key
+            // is held, and was. The ` key toggles, so only its first counts.
+            for (i32 i = 0; i < ARRAY_COUNT(KEY_BUTTONS); i++) {
+                if (KEY_BUTTONS[i].key == event.key.scancode)
+                    keys_held[i] = event.key.down;
+            }
+            if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_GRAVE)
+                events.backquote_pressed = true;
+            break;
+
+        case SDL_EVENT_GAMEPAD_ADDED:
+            open_gamepad(event.gdevice.which);
+            break;
+
+        case SDL_EVENT_GAMEPAD_REMOVED:
+            close_gamepad(event.gdevice.which);
+            break;
+
+        case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+        case SDL_EVENT_GAMEPAD_BUTTON_UP:
+            if (Gamepad* gamepad = find_gamepad(event.gbutton.which)) {
+                for (i32 i = 0; i < ARRAY_COUNT(GAMEPAD_BUTTONS); i++) {
+                    if (GAMEPAD_BUTTONS[i].gamepad_button == event.gbutton.button)
+                        gamepad->buttons_held[i] = event.gbutton.down;
+                }
+            }
+            break;
+
+        case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            if (Gamepad* gamepad = find_gamepad(event.gaxis.which)) {
+                if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTX)
+                    gamepad->stick_x = event.gaxis.value;
+                if (event.gaxis.axis == SDL_GAMEPAD_AXIS_LEFTY)
+                    gamepad->stick_y = event.gaxis.value;
+            }
+            break;
+
+        default:
+            break;
         }
 
-        // A key's scancode is its place on the keyboard, whatever the layout
-        // prints on it: SDL_SCANCODE_GRAVE is the key left of 1, ` on a US
-        // keyboard. A key held down sends key-down events again and again,
-        // marked repeat, and only the first one is a press.
-        bool key_down = event.type == SDL_EVENT_KEY_DOWN && !event.key.repeat;
-        if (key_down && event.key.scancode == SDL_SCANCODE_GRAVE)
-            events.backquote_pressed = true;
+        // After every event, not once at the end: a key that went down and
+        // up again in the same frame is still a press.
+        input::set_held(pad, held_buttons());
     }
     return events;
 }

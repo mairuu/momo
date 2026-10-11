@@ -62,3 +62,9 @@ Every change to [plan.md](plan.md) and [outline.md](outline.md), oldest first. T
 | ch13 | The engine has a key of its own, `` ` ``, which `platform::handle_events` reports ahead of chapter 14's input | The overlay needed a way to be shown, and the game's pad has no button for it. |
 | ch13 | The book's pictures are captures in `book/images/` | Plan §2 said screenshots go into the chapters, but not where. |
 | ch13 | The outline says chapter 13 also gives momo a command line and the engine its first key | Both arrived with the overlay and the capture. |
+| ch14 | The pad's buttons are named for where they are, the NES pad's plus L and R, instead of Jump, Shoot and previous and next power. The game names what they do. | The plan named them for this game, the problem chapter 10's first layers had. Buttons can't be bare numbers like layers, since the engine ties each one to keys and gamepad buttons. |
+| ch14 | Added how presses are latched: bits collected between ticks after every event, taken by each tick, and the pad readable only during a tick | Plan §4.4 said presses are latched to ticks, but not how. A throwaway patch that compared frames instead saw 20 of 40 taps at 120 Hz, and 122 with 50 ms frames. |
+| ch14 | Added the key and gamepad tables, in `platform.cpp`, with every device driving one pad and the left stick as the d-pad | Plan §4.4 said the keyboard and gamepads map onto the pad, but not how. |
+| ch14 | Captures take no input | A key pressed during a capture would change its picture, which chapter 13 promised stays the same. |
+| ch14 | The overlay shows which of the pad's buttons are held | It's the first place to look when a key seems to do nothing. |
+| ch14 | The outline says chapter 14 also names the buttons for the pad and gives the game a player | Both arrived with the pad. |

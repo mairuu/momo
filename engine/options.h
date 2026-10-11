@@ -10,7 +10,8 @@
 //                         of 1, shows and hides it while momo runs.
 //   --capture TICK FILE   run the game until it has run TICK ticks, save the
 //                         screen as a PNG file at FILE, and quit. 0 saves the
-//                         first picture, before any tick.
+//                         first picture, before any tick. The game gets no
+//                         input from the keys or gamepads (chapter 14).
 //
 // All zeros is a run with neither.
 struct Options {

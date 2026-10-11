@@ -1,11 +1,12 @@
 // platform.h: everything the engine needs from the operating system: a
 // window, its events and its OpenGL context, memory, files, libraries and a
 // clock. Chapter 07 explains it, chapter 08 adds OpenGL, chapter 09 the clock
-// and vsync, chapter 11 window sizes and display scales, and chapter 12
-// reading files.
+// and vsync, chapter 11 window sizes and display scales, chapter 12 reading
+// files, and chapter 14 the keyboard and gamepads.
 #pragma once
 
 #include "base.h"
+#include "input.h"
 
 // The rest of the engine reaches the OS only through these functions, and
 // only platform.cpp includes SDL or an OS header. A port to another OS, or
@@ -34,17 +35,18 @@ bool init(const char* title, i32 width, i32 height);
 // Closes the OpenGL context and the window, and stops SDL.
 void shutdown();
 
-// What happened since the last handle_events, of what the engine acts on.
-// Keys are the engine's own, never the game's: the game gets its buttons from
-// chapter 14's input.
+// What happened since the last handle_events, of what the engine acts on
+// itself. The key here is the engine's own, and never one of the pad's.
 struct Events {
     bool quit;              // the window was closed, or Ctrl+C was pressed in the terminal
     bool backquote_pressed; // the ` key, left of 1, went down
 };
 
-// Handles every event that arrived since the last call, and returns what
-// the engine needs to know about them.
-Events handle_events();
+// Handles every event that arrived since the last call. Keys and gamepad
+// buttons that drive the pad are recorded in pad as they go down and up, with
+// input::set_held (chapter 14). Gamepads plugged in are opened, and unplugged
+// ones closed. Returns the rest.
+Events handle_events(Pad* pad);
 
 // The window's size in pixels right now: what OpenGL draws into, and what
 // the renderer fits the screen into. It changes whenever the window is

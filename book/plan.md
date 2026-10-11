@@ -172,7 +172,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | Decision | Why |
 |---|---|
 | SDL3 (system package) behind momo's `platform::` module. Game code never includes SDL. | Window, input, gamepad, audio and timing in one library, with portability for free. Writing these from scratch isn't one of the learning goals. |
-| Input is a **polled virtual NES pad**: d-pad, Jump, Shoot, Start, Select, previous/next power. Keyboard and gamepad map onto it. The game calls `input::down` / `pressed` / `released`. | The game never sees real keys. Polling suits a fixed-tick game. |
+| Input is a **polled virtual NES pad**: d-pad, Jump, Shoot, Start, Select, previous/next power. Keyboard and gamepad map onto it. The game calls `input::down` / `pressed` / `released`. **Changed in ch14** (below). | The game never sees real keys. Polling suits a fixed-tick game. |
 | Presses are **latched to ticks** | A tap between two ticks still counts, and "pressed" is true on exactly one tick even when a frame runs zero ticks. |
 | The engine handles non-gameplay events itself (lost focus pauses, resize, gamepad plugged in) | Hazel's event system mostly serves the editor and UI, which are out of scope. |
 | *Added in ch07:* `platform::` is the only engine module that includes SDL or an OS header. It uses SDL wherever SDL has the function (window, events, paths, file times, libraries, sleeping), and calls the OS only where it doesn't (reserving memory). None of it is `MOMO_API`. | The rest of the engine reads in momo's types and logs failures the momo way, and porting, or replacing SDL, rewrites one file. On Linux, SDL makes the same calls momo made itself before. |
@@ -180,6 +180,10 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch11:* The window is resizable, and resizing needs no event: the renderer asks SDL for the window's size in pixels every frame. The game never learns the window's size. | SDL keeps the size current while it handles events, so asking can't fall out of step. It also catches a move to a display with another scale, which changes the pixels but not the points. |
 | *Added in ch12:* `platform::read_file` reads a whole file through SDL | Reading files is the platform's job, like their times. stb_image decodes bytes it's handed and never opens a file. |
 | *Added in ch13:* The engine has keys of its own, which the game never sees. `platform::handle_events` reports that a key went down, by its place on the keyboard, and the engine decides what it does: `` ` ``, left of 1, shows and hides the overlay. | A debug key isn't a button on the game's pad (chapter 14). The platform reports the key, and its meaning is the engine's. |
+| *Changed in ch14:* The pad's buttons are named for where they are: the NES pad's d-pad, A, B, Select and Start, plus L and R. The game names what each one does. | What a button does is the game's decision (§1), as a layer's is (§4.5). A button can't be a bare number like a layer, since the engine ties each one to keys and gamepad buttons. |
+| *Added in ch14:* Between ticks, the engine collects the pad's changes as bits, what went down and what went up, after every event. Each tick takes them, and the next tick's collection starts from none. The game can read the pad only during a tick. | Measured with 40 taps: comparing each frame with the last saw 20 at 120 Hz and 122 with 50 ms frames. Latched, both saw 40. Outside a tick, `pressed` would repeat the last tick's answer. A tick's pad, 6 bytes, is all the input a tick has, and what chapter 21 records. |
+| *Added in ch14:* The tables from keys, by scancode, and SDL's gamepad buttons to the pad's buttons are in `platform.cpp`. The keyboard and every gamepad drive one pad: a button is down while anything holds it. A gamepad's left stick is the d-pad once it's pushed more than halfway. | Only `platform::` knows SDL's names. One person plays, with whatever is in their hands. Keeping what each device holds lets an unplugged gamepad let go of its buttons. |
+| *Added in ch14:* A capture takes no input | The same command must save the same file (§4.10). |
 
 ### 4.5 Rendering
 
@@ -259,6 +263,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch07:* The debug build's executable tells LeakSanitizer to skip leaks whose call stack passes through `libSDL3.so`, and LeakSanitizer lists what it skipped at every exit | The graphics driver keeps memory that only its own globals point to, so it looks leaked once `SDL_Quit` unloads the driver. momo's own memory comes from arenas. The list keeps the suppression in sight. |
 | *Added in ch13:* The debug overlay shows frames and ticks a second, each frame's work, the game's rectangles and draw calls in the last frame, and the peaks of its arenas. It's hidden until `` ` `` is pressed, or `--overlay` is given. | Each line answers a question earlier chapters needed an outside tool or a throwaway patch for. |
 | *Added in ch13:* `--capture TICK FILE` runs the game to that tick, at its usual speed, saves the 256×240 screen as a PNG file, and quits. Failing to save makes momo exit with 1. | The game depends only on its ticks (§4.3), so the same command saves the same file on every run, on any display. Seconds or frames would land on a different tick each time. |
+| *Added in ch14:* The overlay's last line names every button on the pad, white while it's held | It says whether a key reaches the pad at all, before the game's code is suspected. |
 
 ## 5. Game
 

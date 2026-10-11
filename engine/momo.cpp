@@ -1,7 +1,9 @@
 // momo.cpp: the engine's entry point. It reserves memory, loads game.so,
 // opens the window, runs the loop, and reloads game.so whenever it changes.
-// It also draws the debug overlay and saves captures (chapter 13).
+// It also draws the debug overlay and saves captures (chapter 13), and hands
+// each tick the pad (chapter 14).
 #include "momo.h"
+#include "input.h"
 #include "options.h"
 #include "platform.h"
 #include "renderer.h"
@@ -36,6 +38,10 @@ struct Engine {
     i32 frame_count;
     i32 tick_count;
     bool quit_requested;
+
+    // The pad, as it's been since the last tick: what went down and up,
+    // which the next tick takes (chapter 14).
+    Pad pad;
 
     // The debug overlay (chapter 13): whether it's shown, and its numbers.
     bool overlay_shown;
@@ -174,10 +180,18 @@ static void start_game()
 // ---- The debug overlay and captures (chapter 13) ----------------------------
 
 constexpr Color OVERLAY_TEXT_COLOR = renderer::rgb(0xffffff);
+constexpr Color OVERLAY_DIM_COLOR = renderer::rgb(0x606060); // a button that isn't held
 // Black, an eighth see-through.
 constexpr Color OVERLAY_BACKDROP_COLOR = { .r = 0, .g = 0, .b = 0, .a = 224 };
 constexpr i32 OVERLAY_MARGIN = 4;       // pixels of backdrop around the text
 constexpr i32 OVERLAY_LINE_HEIGHT = 10; // 8 pixels of letters, then 2 between lines
+
+// The overlay's names for the pad's buttons, in the order of enum Button.
+constexpr Str BUTTON_NAMES[] = {
+    STR("A"), STR("B"), STR("sel"), STR("start"), STR("^"),
+    STR("v"), STR("<"), STR(">"),   STR("L"),     STR("R"),
+};
+static_assert(ARRAY_COUNT(BUTTON_NAMES) == BUTTON_COUNT, "a name for every button");
 
 // One line of the overlay's table of arenas: the arena's name, and the most
 // it has ever held, lined up under "peak".
@@ -214,10 +228,17 @@ static void draw_overlay()
     for (Str line : lines)
         longest = max(longest, line.len);
 
+    // The last line is the pad: the name of every button, with a space after
+    // each one but the last.
+    i32 pad_line_len = -1;
+    for (Str name : BUTTON_NAMES)
+        pad_line_len += name.len + 1;
+    longest = max(longest, pad_line_len);
+
     // The box fits around the text, with the same margin on every side. The
     // last line has no gap under it, and a glyph's last column and last row
     // are blank already, so the box ends one pixel sooner.
-    i32 line_count = ARRAY_COUNT(lines);
+    i32 line_count = ARRAY_COUNT(lines) + 1;
     i32 text_height = (line_count - 1) * OVERLAY_LINE_HEIGHT + GLYPH_SIZE;
     Rect box = {
         .x = 0,
@@ -231,9 +252,21 @@ static void draw_overlay()
     // the text.
     renderer::begin_overlay();
     renderer::draw_rect(box, OVERLAY_BACKDROP_COLOR, 0);
-    for (i32 i = 0; i < line_count; i++)
+    for (i32 i = 0; i < ARRAY_COUNT(lines); i++)
         renderer::draw_text(lines[i], OVERLAY_MARGIN, OVERLAY_MARGIN + i * OVERLAY_LINE_HEIGHT,
                             OVERLAY_TEXT_COLOR, 0);
+
+    // The pad's line: a button's name is white while the button is held, and
+    // gray while it isn't. It shows the pad as it is now, which the next tick
+    // will see.
+    i32 x = OVERLAY_MARGIN;
+    i32 y = OVERLAY_MARGIN + ARRAY_COUNT(lines) * OVERLAY_LINE_HEIGHT;
+    for (i32 i = 0; i < BUTTON_COUNT; i++) {
+        bool held = (engine.pad.down & input::bit((Button)i)) != 0;
+        Color color = held ? OVERLAY_TEXT_COLOR : OVERLAY_DIM_COLOR;
+        renderer::draw_text(BUTTON_NAMES[i], x, y, color, 0);
+        x += (BUTTON_NAMES[i].len + 1) * GLYPH_SIZE;
+    }
 }
 
 // Saves the screen as a PNG file where --capture said, and ends the run.
@@ -313,11 +346,13 @@ i32 run(i32 argc, char** argv)
     stats::init(&engine.stats, engine.start_ns);
     while (!engine.quit_requested) {
         i64 frame_start_ns = platform::clock_ns();
-        platform::Events events = platform::handle_events();
+        platform::Events events = platform::handle_events(&engine.pad);
         if (events.quit)
             break; // the window was closed, or Ctrl+C
         if (events.backquote_pressed)
             engine.overlay_shown = !engine.overlay_shown;
+        if (engine.options.capture_path)
+            engine.pad = {}; // a capture takes no input, so every run saves the same picture
         reload_game_if_changed();
         arena::reset(&engine.frame); // last frame's memory is free again
 
@@ -332,8 +367,14 @@ i32 run(i32 argc, char** argv)
             ticks = 0;
         if (engine.options.capture_path)
             ticks = min(ticks, engine.options.capture_tick - engine.tick_count);
-        for (i32 i = 0; i < ticks; i++)
+        for (i32 i = 0; i < ticks; i++) {
+            // Each tick takes what the pad did since the last tick: a press in
+            // a frame that ran no ticks waits for the next tick, and a frame
+            // that runs three hands it to the first of them only.
+            input::begin_tick(input::take_tick(&engine.pad));
             engine.game.update(engine.state);
+            input::end_tick();
+        }
         engine.tick_count += ticks;
 
         // The game draws its picture of where the ticks left it, and the
