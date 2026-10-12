@@ -1,4 +1,5 @@
-// str.cpp: momo's strings. Chapter 05 explains them.
+// str.cpp: momo's strings. Chapter 05 explains them, and chapter 17 adds find
+// and next_line.
 #include "str.h"
 
 #include <stdarg.h>
@@ -34,6 +35,15 @@ Str slice(Str s, i32 start, i32 end)
     return { .data = s.data + start, .len = end - start };
 }
 
+i32 find(Str s, char c)
+{
+    for (i32 i = 0; i < s.len; i++) {
+        if (s.data[i] == c)
+            return i;
+    }
+    return -1;
+}
+
 i32 find_last(Str s, char c)
 {
     for (i32 i = s.len - 1; i >= 0; i--) {
@@ -41,6 +51,20 @@ i32 find_last(Str s, char c)
             return i;
     }
     return -1;
+}
+
+Str next_line(Str* text)
+{
+    i32 end = find(*text, '\n');
+    if (end == -1) {
+        // The last line, with no '\n' after it.
+        Str line = *text;
+        *text = slice(*text, text->len, text->len);
+        return line;
+    }
+    Str line = slice(*text, 0, end);
+    *text = slice(*text, end + 1, text->len); // past the '\n'
+    return line;
 }
 
 bool eq(Str a, Str b)

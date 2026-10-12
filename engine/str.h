@@ -1,4 +1,5 @@
-// str.h: momo's strings, a pointer and a length. Chapter 05 explains them.
+// str.h: momo's strings, a pointer and a length. Chapter 05 explains them,
+// and chapter 17 adds find and next_line.
 #pragma once
 
 #include "base.h"
@@ -33,8 +34,24 @@ MOMO_API Str fmt(Arena* arena, const char* format, ...) __attribute__((format(pr
 // result points into s.
 MOMO_API Str slice(Str s, i32 start, i32 end);
 
+// The index of the first c in s, or -1 if there isn't one.
+MOMO_API i32 find(Str s, char c);
+
 // The index of the last c in s, or -1 if there isn't one.
 MOMO_API i32 find_last(Str s, char c);
+
+// Cuts the first line off text and returns it, without its '\n'. text moves
+// on to the start of the next line, and is empty once the last line is cut.
+// Nothing is copied: the line points into text. A '\n' at the very end
+// starts no new line, so "a\nb\n" and "a\nb" are both two lines, as an
+// editor counts them:
+//
+//     Str rest = text;
+//     while (rest.len > 0) {
+//         Str line = str::next_line(&rest);
+//         ...
+//     }
+MOMO_API Str next_line(Str* text);
 
 // True if a and b hold the same chars.
 MOMO_API bool eq(Str a, Str b);

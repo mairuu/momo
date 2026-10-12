@@ -31,7 +31,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 15 Fixed-Point: `Fx`, `Fx2`, tests
 - *Appendix A: `design.md` is drafted here.* *Changed in ch16:* it comes after chapter 16 instead, as a request of its own, before the chapters that need names.
 - 16 Entities: `Entity`, `kind`, `Pool<T>`, generational handles, `switch` dispatch. *Changed in ch16:* `Pool<T, N>`, with its capacity in its type. Also gives the game two nests that let out bats, each keeping a handle to its bat. `Array<T>` waits for the first list that needs one.
-- 17 Text Tilemaps
+- 17 Text Tilemaps. *Changed in ch17:* also gives the game `momo::read_file`, its first way to read a file that isn't a picture.
 - 18 Collision: pixel-by-pixel stepping (Actor/Solid), with tests
 - 19 Debug Drawing: hitboxes, collision tiles
 - 20 Run and Jump: variable-height jump, gravity, maximum fall speed

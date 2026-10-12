@@ -87,6 +87,21 @@ static void slice_can_take_nothing_or_everything()
     CHECK_EQ(str::slice(Str{}, 0, 0).len, 0);
 }
 
+static void find_finds_the_first_one()
+{
+    CHECK_EQ(str::find(STR("build/debug/momo"), '/'), 5);
+    CHECK_EQ(str::find(STR("/"), '/'), 0);
+    CHECK_EQ(str::find(STR("momo"), '/'), -1);
+    CHECK_EQ(str::find(Str{}, '/'), -1);
+}
+
+static void find_looks_only_inside_the_str()
+{
+    // "debug" is followed by "/momo" in memory, but the slice ends before it.
+    Str folder = str::slice(STR("build/debug/momo"), 6, 11);
+    CHECK_EQ(str::find(folder, '/'), -1);
+}
+
 static void find_last_finds_the_last_one()
 {
     CHECK_EQ(str::find_last(STR("build/debug/momo"), '/'), 11);
@@ -101,6 +116,55 @@ static void find_last_looks_only_inside_the_str()
     // before it, so the last '/' it holds is the one after "build".
     Str folder = str::slice(STR("build/debug/momo"), 0, 11);
     CHECK_EQ(str::find_last(folder, '/'), 5);
+}
+
+static void next_line_cuts_one_line_at_a_time()
+{
+    Str rest = STR("##\n.#\n");
+    Str first = str::next_line(&rest);
+    CHECK(str::eq(first, STR("##")));
+    CHECK(str::eq(rest, STR(".#\n")));
+    Str second = str::next_line(&rest);
+    CHECK(str::eq(second, STR(".#")));
+    CHECK_EQ(rest.len, 0);
+}
+
+static void next_line_points_into_the_text()
+{
+    Str text = STR("##\n.#");
+    Str rest = text;
+    Str first = str::next_line(&rest);
+    Str second = str::next_line(&rest);
+    CHECK(first.data == text.data);
+    CHECK(second.data == text.data + 3); // past "##" and its '\n'
+}
+
+// How many lines next_line cuts text into.
+static i32 count_lines(Str text)
+{
+    i32 lines = 0;
+    while (text.len > 0) {
+        str::next_line(&text);
+        lines++;
+    }
+    return lines;
+}
+
+static void a_last_line_needs_no_newline()
+{
+    // With or without a '\n' at the end, it's the same two lines.
+    CHECK_EQ(count_lines(STR("##\n.#\n")), 2);
+    CHECK_EQ(count_lines(STR("##\n.#")), 2);
+    CHECK_EQ(count_lines(STR("")), 0);
+}
+
+static void empty_lines_are_lines()
+{
+    Str rest = STR("\n\n#");
+    CHECK_EQ(str::next_line(&rest).len, 0);
+    CHECK_EQ(str::next_line(&rest).len, 0);
+    CHECK(str::eq(str::next_line(&rest), STR("#")));
+    CHECK_EQ(rest.len, 0);
 }
 
 static void eq_compares_chars_not_pointers()
@@ -123,8 +187,14 @@ int main(int argc, char** argv)
     RUN(fmt_formats_64_bit_numbers_with_lld);
     RUN(slice_points_into_the_original);
     RUN(slice_can_take_nothing_or_everything);
+    RUN(find_finds_the_first_one);
+    RUN(find_looks_only_inside_the_str);
     RUN(find_last_finds_the_last_one);
     RUN(find_last_looks_only_inside_the_str);
+    RUN(next_line_cuts_one_line_at_a_time);
+    RUN(next_line_points_into_the_text);
+    RUN(a_last_line_needs_no_newline);
+    RUN(empty_lines_are_lines);
     RUN(eq_compares_chars_not_pointers);
     return test::report();
 }

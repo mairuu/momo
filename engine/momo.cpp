@@ -1,7 +1,7 @@
 // momo.cpp: the engine's entry point. It reserves memory, loads game.so,
 // opens the window, runs the loop, and reloads game.so whenever it changes.
 // It also draws the debug overlay and saves captures (chapter 13), and hands
-// each tick the pad (chapter 14).
+// each tick the pad (chapter 14). It reads files for the game (chapter 17).
 #include "momo.h"
 #include "input.h"
 #include "options.h"
@@ -11,6 +11,7 @@
 #include "timestep.h"
 
 #include <stddef.h>
+#include <string.h>
 
 namespace momo {
 
@@ -428,6 +429,30 @@ Arena* stage_arena()
 Arena* frame_arena()
 {
     return &engine.frame;
+}
+
+Str read_file(Arena* arena, const char* path)
+{
+    // The full path is needed only until the file is read, so it's formatted
+    // on the stack, through an arena of its own, like the overlay's text.
+    u8 memory[4096]; // PATH_MAX: Linux takes no longer path
+    Arena scratch = {};
+    arena::init(&scratch, memory, sizeof(memory));
+    Str full_path = str::fmt(&scratch, "%s%s", platform::executable_folder(), path);
+
+    i64 size = 0;
+    void* file = platform::read_file(full_path.data, &size);
+    if (!file)
+        return {}; // already logged
+
+    // The file's bytes came from malloc (chapter 12). They're copied into
+    // the arena, and given back.
+    ASSERT(size < INT32_MAX); // a Str's len is an i32
+    char* data = arena::push_array<char>(arena, (i32)size + 1);
+    memcpy(data, file, size);
+    platform::free_file(file);
+    LOG_INFO("read %s, %lld bytes", path, size);
+    return { .data = data, .len = (i32)size };
 }
 
 } // namespace momo

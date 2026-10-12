@@ -74,6 +74,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | No string-literal pointers stored in game state | The text lived in the old `.so`'s memory. |
 | Store indices into `constexpr` tables, never pointers to them (`anim_id`, not `const Anim*`) | The tables live in the old `.so` too. |
 | All game state lives in memory the engine owns | It's the only memory that survives a reload. |
+| *Added in ch17:* A pointer in game state points into the permanent or the stage arena, never into the frame arena | The engine resets the frame arena every frame. Chapter 17's room, put there by mistake, looked right until the game formatted some text, then lost a tile for every byte, and no sanitizer noticed. |
 
 *Added after ch09:* `make lint` catches globals in `game/` (§7). No clang-tidy check catches the other rules, so they're kept by reading the code.
 
@@ -150,6 +151,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Changed in ch06:* A fourth arena belongs to the engine, and the game can't reach it. Permanent and stage hold only the game's memory, side by side at the start of the block, and the engine resets both when `GameState`'s layout changes. | The reset would wipe anything the engine kept in the permanent arena. Chapter 21's snapshots should copy all of the game's memory and none of the engine's, in one piece. |
 | *Added in ch12:* A file's bytes and its decoded pixels come from `malloc`, SDL's and stb_image's, and are given back before the function that loaded them returns | They're needed only until OpenGL has copied the pixels. The engine's arena is never reset, and the frame arena is the game's. AddressSanitizer checks `malloc`'s memory. |
 | *Changed in ch13:* The overlay shows the peaks of the game's three arenas while it runs, and the engine still prints all four when it quits. The overlay's text is formatted in an arena on the stack. | The log stays after the window is gone, and the chapters quote it. The engine's own arena isn't the game's to watch. The frame arena is the game's, and its peak is one of the overlay's lines. |
+| *Added in ch17:* What a stage loads goes in the stage arena, with a pointer to it in `GameState`. Text read only to be parsed goes in the frame arena. | A room's file decides its size, which an array inside `GameState` can't follow. The arena's memory never moves. It's reset only together with `GameState` (chapter 06) or when the game loads a stage, and chapter 21's snapshots put it back where it was. |
 
 ### 4.3 The frame
 
@@ -184,6 +186,7 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | *Added in ch14:* Between ticks, the engine collects the pad's changes as bits, what went down and what went up, after every event. Each tick takes them, and the next tick's collection starts from none. The game can read the pad only during a tick. | Measured with 40 taps: comparing each frame with the last saw 20 at 120 Hz and 122 with 50 ms frames. Latched, both saw 40. Outside a tick, `pressed` would repeat the last tick's answer. A tick's pad, 6 bytes, is all the input a tick has, and what chapter 21 records. |
 | *Added in ch14:* The tables from keys, by scancode, and SDL's gamepad buttons to the pad's buttons are in `platform.cpp`. The keyboard and every gamepad drive one pad: a button is down while anything holds it. A gamepad's left stick is the d-pad once it's pushed more than halfway. | Only `platform::` knows SDL's names. One person plays, with whatever is in their hands. Keeping what each device holds lets an unplugged gamepad let go of its buttons. |
 | *Added in ch14:* A capture takes no input | The same command must save the same file (§4.10). |
+| *Added in ch17:* The game reads a file with `momo::read_file`, relative to the executable's folder, into an arena it picks. `malloc`'s copy is given back before it returns. | `platform::` isn't the game's. The arena says how long the bytes last, as it does for everything else the game keeps. |
 
 ### 4.5 Rendering
 
@@ -294,6 +297,8 @@ When `game.so` reloads, its old code is unloaded but game state memory stays. An
 | `tools/bake` converts source assets into momo's own formats at build time, run by Make | Runtime code only loads simple formats. Teaches the asset pipeline. |
 | A JSON library is included, used only by the bake tool | JSON is a file format, and parsing it teaches nothing about engines. |
 | **Asset hot reload:** the engine watches baked files and reloads any that change | Content works the same way code does: save, re-bake, see it. |
+| *Added in ch17:* A tilemap is the engine's: a grid of numbers, one byte a tile, row by row from the top. The game names the numbers with an enum, and passes the chars a map uses in the enum's order: tile n is the nth char. Outside the map is tile 0. | The engine keeps the mechanism and the game the meaning, as with layers (§4.5) and buttons (§4.4). In the engine, the parser can be tested, and so can chapter 18's collision, which reads the tiles. |
+| *Added in ch17:* A text map is one line a row and one char a tile, copied next to the executable like the pictures, and empty is `.`. A map with a mistake logs its line and column, pushes nothing, and loads as an empty room. | The file looks like the room. The repository's `.editorconfig` trims trailing spaces: with a space for empty, saving from Neovim cut chapter 17's map from 255 bytes to 162. A typo in a map is an expected failure, like a shader that won't compile (§3.3). |
 | *Added in ch12:* Until chapter 30's bake tool, pictures are PNG files in `assets/`, which `make` copies next to the executable, and which stb_image decodes when the game loads them. Paths are relative to the executable's folder. `assets/LICENSES.md` lists every asset. | Every image editor saves PNG, without losing a pixel. A build folder runs from anywhere (§4.1). |
 
 ## 7. Build, dependencies, repo

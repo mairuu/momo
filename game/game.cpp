@@ -1,6 +1,6 @@
-// game.cpp: the game. For now it's two nests that let out bats, one at a time
-// each, and a player who walks where the pad says and changes power. Each of
-// them is an entity.
+// game.cpp: the game. For now it's one room, read from assets/room.txt, with
+// two nests that let out bats, one at a time each, and a player who walks
+// where the pad says and changes power. Each of them is an entity.
 #include "momo.h"
 
 // Bump this by hand whenever GameState changes in a way that keeps its size:
@@ -22,6 +22,22 @@ enum EntityKind : u8 {
     ENTITY_BAT,
 };
 
+// What each tile of the room is (chapter 17). The engine keeps tiles as
+// numbers, and these are this game's names for them. TILE_CHARS has the char
+// that stands for each one in a map file, in the same order: tile n is the
+// char at n.
+//
+// Tiles are numbers in the stage arena, like kinds in GameState, so add new
+// ones at the end, of both.
+enum Tile : u8 {
+    TILE_EMPTY,  // '.': nothing, the background shows
+    TILE_WALL,   // '#'
+    TILE_PILLAR, // '|': stone, in front of the entities
+    TILE_COUNT,
+};
+constexpr Str TILE_CHARS = STR(".#|");
+static_assert(TILE_CHARS.len == TILE_COUNT, "a char for every tile");
+
 // Anything in the game that moves or acts. Every kind has every field, and
 // leaves the ones it doesn't use at zero.
 //
@@ -41,14 +57,15 @@ constexpr i32 MAX_ENTITIES = 32;
 
 // Everything the game remembers from one tick to the next. The engine keeps
 // it in its own memory, so it survives a reload of this code. Game state holds
-// numbers, enums, indices and handles only, never pointers into game.so
-// (chapter 06).
+// numbers, enums, indices and handles, and pointers into the game's arenas,
+// never pointers into game.so (chapter 06).
 struct GameState {
     i32 tick;                            // ticks run since init: game time (chapter 09)
     Pool<Entity, MAX_ENTITIES> entities; // everything that moves or acts (chapter 16)
     Handle player;                       // the player's entity
     i32 power;                           // the player's power, 0 to POWER_COUNT - 1: its color
     Texture bat_texture;                 // bat.png, a number the renderer gave out (chapter 12)
+    Tilemap room;                        // the room's tiles, in the stage arena (chapter 17)
 };
 
 namespace game {
@@ -70,8 +87,12 @@ static_assert(LAYER_COUNT <= MAX_LAYERS, "the renderer draws at most MAX_LAYERS 
 constexpr Button PREVIOUS_POWER_BUTTON = BUTTON_L;
 constexpr Button NEXT_POWER_BUTTON = BUTTON_R;
 
-constexpr i32 TILE_SIZE = 16;
-constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE; // two rows of tiles
+constexpr i32 TILE_SIZE = 16; // pixels: a screen is 16 tiles by 15
+
+// Where the player stands and the bats' shadows fall: the top of room.txt's
+// floor, two rows of tiles high. Nothing reads the room's tiles but render
+// yet, so a floor moved in room.txt leaves the player standing here.
+constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE;
 
 // MegaMan's walking speed in MegaMan 1 and 2: 1 pixel and 96/256 a tick.
 constexpr Fx PLAYER_SPEED = fx::from_double(1.375); // pixels per tick
@@ -84,7 +105,7 @@ constexpr i32 NEST_SIZE = 16;
 constexpr i32 NEST_WAIT_TICKS = 60;
 constexpr i32 BAT_SIZE = 16; // each frame in bat.png is 16x16
 
-constexpr Color FLOOR_COLORS[] = { renderer::rgb(0x7c4a1e), renderer::rgb(0x5c3612) };
+constexpr Color WALL_COLORS[] = { renderer::rgb(0x7c4a1e), renderer::rgb(0x5c3612) };
 constexpr Color PILLAR_COLOR = renderer::rgb(0x8a8a8a);
 constexpr Color NEST_RIM_COLOR = renderer::rgb(0x5a5a5a);
 constexpr Color NEST_HOLE_COLOR = renderer::rgb(0x141414);
@@ -105,6 +126,14 @@ void init(GameState* state)
 {
     LOG_INFO("init");
     state->bat_texture = renderer::load_texture("assets/bat.png");
+
+    // The room's text is needed only until its tiles are read out of it, so
+    // it goes in the frame arena. The tiles last as long as the stage. The
+    // stage arena is empty here: the engine resets it whenever it starts the
+    // game over (chapter 06).
+    const char* room_path = "assets/room.txt";
+    Str room_text = momo::read_file(momo::frame_arena(), room_path);
+    state->room = tilemap::parse(momo::stage_arena(), room_text, TILE_CHARS, room_path);
 
     // The engine hands over a zeroed GameState, so the pool starts empty, and
     // the player goes into slot 0.
@@ -209,6 +238,26 @@ void update(GameState* state)
 
 // ---- Render -----------------------------------------------------------------
 
+// One of the room's tiles, in its place on the screen. Walls are a
+// checkerboard of two browns.
+void draw_tile(Tile tile, i32 column, i32 row)
+{
+    Rect rect = { .x = column * TILE_SIZE, .y = row * TILE_SIZE, .w = TILE_SIZE, .h = TILE_SIZE };
+    switch (tile) {
+    case TILE_EMPTY:
+        break;
+    case TILE_WALL:
+        renderer::draw_rect(rect, WALL_COLORS[(row + column) % 2], LAYER_BACKGROUND);
+        break;
+    case TILE_PILLAR:
+        renderer::draw_rect(rect, PILLAR_COLOR, LAYER_FOREGROUND);
+        break;
+    case TILE_COUNT:
+        ASSERT(!"TILE_COUNT isn't a tile");
+        break;
+    }
+}
+
 // The player, standing on the floor, in its power's color. It walks behind
 // the pillar, which is in the foreground.
 void draw_player(const GameState* state, const Entity* player)
@@ -248,20 +297,13 @@ void draw_bat(const GameState* state, const Entity* bat)
 // Once per frame: the whole picture, drawn again from the state.
 void render(const GameState* state)
 {
-    // The floor: two rows of tiles in a checkerboard.
-    for (i32 row = 0; row < 2; row++) {
-        for (i32 column = 0; column < SCREEN_WIDTH / TILE_SIZE; column++) {
-            Rect tile = { .x = column * TILE_SIZE,
-                          .y = FLOOR_Y + row * TILE_SIZE,
-                          .w = TILE_SIZE,
-                          .h = TILE_SIZE };
-            renderer::draw_rect(tile, FLOOR_COLORS[(row + column) % 2], LAYER_BACKGROUND);
-        }
+    // The room, row by row. A room that failed to load is a zeroed
+    // Tilemap, with no rows.
+    const Tilemap& room = state->room;
+    for (i32 row = 0; row < room.rows; row++) {
+        for (i32 column = 0; column < room.columns; column++)
+            draw_tile((Tile)tilemap::at(room, column, row), column, row);
     }
-
-    // A stone pillar in the middle of the screen, in front of the bats.
-    Rect pillar = { .x = 120, .y = 96, .w = TILE_SIZE, .h = FLOOR_Y - 96 };
-    renderer::draw_rect(pillar, PILLAR_COLOR, LAYER_FOREGROUND);
 
     // Every entity, in the order of their slots, as in update. state is
     // const, so this is the get that returns const pointers.

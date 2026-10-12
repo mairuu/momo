@@ -99,10 +99,10 @@ TESTS_SRC  := $(wildcard tests/*.cpp)
 TESTS_OBJ  := $(TESTS_SRC:%.cpp=$(OUT)/obj/%.o)
 TEST_PROGS := $(patsubst tests/%.cpp,$(OUT)/tests/%,$(wildcard tests/*_test.cpp))
 
-# The game's pictures (chapter 12). The engine looks for them in the
-# executable's folder, as it does for game.so, so each one is copied into the
-# build: assets/bat.png -> build/debug/assets/bat.png.
-ASSETS     := $(wildcard assets/*.png)
+# The game's pictures (chapter 12) and maps (chapter 17). The engine looks
+# for them in the executable's folder, as it does for game.so, so each one is
+# copied into the build: assets/bat.png -> build/debug/assets/bat.png.
+ASSETS     := $(wildcard assets/*.png assets/*.txt)
 ASSETS_OUT := $(ASSETS:%=$(OUT)/%)
 
 # ---- Targets ----------------------------------------------------------------

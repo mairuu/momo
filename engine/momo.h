@@ -12,6 +12,7 @@
 #include "pool.h"
 #include "renderer.h"
 #include "str.h"
+#include "tilemap.h"
 
 // ---- The engine (libmomo.so) ------------------------------------------------
 
@@ -37,6 +38,12 @@ MOMO_API void quit();
 MOMO_API Arena* permanent_arena();
 MOMO_API Arena* stage_arena();
 MOMO_API Arena* frame_arena();
+
+// Reads the whole file at path, relative to the executable's folder, such as
+// "assets/room.txt", into memory pushed from arena, and returns its bytes,
+// followed by a 0 that len doesn't count. If the file can't be read, logs why
+// and returns an empty Str.
+MOMO_API Str read_file(Arena* arena, const char* path);
 
 } // namespace momo
 
