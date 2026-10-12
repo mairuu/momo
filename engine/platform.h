@@ -36,10 +36,11 @@ bool init(const char* title, i32 width, i32 height);
 void shutdown();
 
 // What happened since the last handle_events, of what the engine acts on
-// itself. The key here is the engine's own, and never one of the pad's.
+// itself. The keys here are the engine's own, and never one of the pad's.
 struct Events {
     bool quit;              // the window was closed, or Ctrl+C was pressed in the terminal
     bool backquote_pressed; // the ` key, left of 1, went down
+    bool f1_pressed;        // the F1 key went down (chapter 19)
 };
 
 // Handles every event that arrived since the last call. Keys and gamepad

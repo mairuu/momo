@@ -250,13 +250,18 @@ Events handle_events(Pad* pad)
         case SDL_EVENT_KEY_UP:
             // A key held down sends key-down events again and again, marked
             // repeat. For the pad's keys, a repeat changes nothing: the key
-            // is held, and was. The ` key toggles, so only its first counts.
+            // is held, and was. The ` and F1 keys toggle, so only their first
+            // counts.
             for (i32 i = 0; i < ARRAY_COUNT(KEY_BUTTONS); i++) {
                 if (KEY_BUTTONS[i].key == event.key.scancode)
                     keys_held[i] = event.key.down;
             }
-            if (event.key.down && !event.key.repeat && event.key.scancode == SDL_SCANCODE_GRAVE)
-                events.backquote_pressed = true;
+            if (event.key.down && !event.key.repeat) {
+                if (event.key.scancode == SDL_SCANCODE_GRAVE)
+                    events.backquote_pressed = true;
+                if (event.key.scancode == SDL_SCANCODE_F1)
+                    events.f1_pressed = true;
+            }
             break;
 
         case SDL_EVENT_GAMEPAD_ADDED:

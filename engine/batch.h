@@ -1,6 +1,6 @@
 // batch.h: the rectangles a frame draws, the order they're drawn in, and the
-// draw calls that draw them. Chapter 10 explains it, and chapter 12 adds
-// textures.
+// draw calls that draw them. Chapter 10 explains it, chapter 12 adds
+// textures, and chapter 19 outlines.
 #pragma once
 
 #include "base.h"
@@ -56,5 +56,12 @@ void sort(const Batch& batch, RectInstance* out, Texture* out_textures);
 // draw calls: a new one wherever the texture changes. Writes them to calls,
 // which has room for count, and returns how many there are.
 i32 draw_calls(const Texture* textures, i32 count, DrawCall* calls);
+
+// Writes the outline of rect to edges, which has room for 4: the rectangles
+// along its four edges, 1 pixel thick and inside it. The top and bottom ones
+// are as wide as rect, and the left and right ones fit between them, so no
+// pixel is in two of them, unless rect is 1 pixel wide or high. Returns how
+// many there are: 4, or 0 if rect has no pixels, 0 wide or high.
+i32 outline(Rect rect, Rect* edges);
 
 } // namespace batch

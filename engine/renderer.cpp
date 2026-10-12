@@ -1,7 +1,7 @@
 // renderer.cpp: momo's drawing, on OpenGL 4.6. Chapter 08 explains how it
 // starts OpenGL, chapter 10 how it draws, chapter 11 how the screen fits the
-// window, chapter 12 textures and text, and chapter 13 the overlay and
-// reading the screen back.
+// window, chapter 12 textures and text, chapter 13 the overlay and reading
+// the screen back, and chapter 19 debug boxes.
 #include "renderer.h"
 #include "batch.h"
 #include "font.h"
@@ -110,8 +110,11 @@ constexpr Texture FONT_TEXTURE = { .index = 1 };  // momo's 8x8 font, for draw_t
 // with room to spare.
 constexpr i32 MAX_OVERLAY_RECTS = 1024;
 
-// Room for a frame's rectangles: the game's and the overlay's.
-constexpr i32 MAX_FRAME_RECTS = MAX_RECTS + MAX_OVERLAY_RECTS;
+// A debug box is drawn as four rectangles, its outline.
+constexpr i32 MAX_BOX_RECTS = 4 * MAX_DEBUG_BOXES;
+
+// Room for a frame's rectangles: the game's, its boxes' and the overlay's.
+constexpr i32 MAX_FRAME_RECTS = MAX_RECTS + MAX_BOX_RECTS + MAX_OVERLAY_RECTS;
 
 // ---- The renderer's state ---------------------------------------------------
 
@@ -130,7 +133,8 @@ static u32 program;              // the two shaders, linked together
 static u32 rect_buffer;          // the frame's rectangles, on the GPU
 static u32 vertex_array;         // how the vertex shader reads rect_buffer
 static Batch game_batch;         // the frame's rectangles, as the game drew them
-static Batch overlay_batch;      // and the overlay's, drawn after the game's
+static Batch box_batch;          // the game's debug boxes, drawn after its rectangles
+static Batch overlay_batch;      // and the overlay's, drawn after both
 static Batch* drawing_into;      // the batch draw_rect and the rest add to
 static RectInstance* sorted;     // all of the frame's rectangles, in drawing order
 static Texture* sorted_textures; // and each one's texture
@@ -390,12 +394,13 @@ bool init(Arena* engine_arena)
     // DSA again: glProgramUniform names the program, so it needn't be bound.
     glProgramUniform2f(program, SCREEN_SIZE_UNIFORM, SCREEN_WIDTH, SCREEN_HEIGHT);
 
-    // Room for a frame's rectangles three times over: as the game and the
-    // overlay draw them, in drawing order, and on the GPU, plus the draw
+    // Room for a frame's rectangles three times over: as the game, its boxes
+    // and the overlay draw them, in drawing order, and on the GPU, plus the draw
     // calls, at most one per rectangle. The GPU's buffer keeps its size for
     // good (Storage), and the CPU can rewrite it every frame
     // (DYNAMIC_STORAGE).
     batch::init(&game_batch, arena, MAX_RECTS);
+    batch::init(&box_batch, arena, MAX_BOX_RECTS);
     batch::init(&overlay_batch, arena, MAX_OVERLAY_RECTS);
     sorted = arena::push_array<RectInstance>(arena, MAX_FRAME_RECTS);
     sorted_textures = arena::push_array<Texture>(arena, MAX_FRAME_RECTS);
@@ -481,6 +486,7 @@ void begin_frame()
     ASSERT(!in_frame);
     in_frame = true;
     batch::clear(&game_batch);
+    batch::clear(&box_batch);
     batch::clear(&overlay_batch);
     drawing_into = &game_batch;
 
@@ -530,6 +536,24 @@ void draw_text(Str text, i32 x, i32 y, Color color, i32 layer)
     }
 }
 
+void debug_box(Rect rect, Color color)
+{
+    // The boxes go in a batch of their own, shown or not, and only end_frame
+    // decides whether that batch is drawn. They're all on one layer, in the
+    // order the game drew them.
+    ASSERT(in_frame);
+    Rect edges[4] = {};
+    i32 edge_count = batch::outline(rect, edges);
+    for (i32 i = 0; i < edge_count; i++) {
+        RectInstance instance = {
+            .rect = edges[i],
+            .source = { .x = 0, .y = 0, .w = 1, .h = 1 }, // all of the white pixel
+            .color = color,
+        };
+        batch::add(&box_batch, instance, WHITE_TEXTURE, 0);
+    }
+}
+
 void begin_overlay()
 {
     ASSERT(in_frame && drawing_into == &game_batch);
@@ -538,20 +562,24 @@ void begin_overlay()
 
 // Draws the frame's rectangles on the screen: one draw call for each run of
 // rectangles in a row, in drawing order, that use the same texture.
-static void draw_batches()
+static void draw_batches(bool boxes_shown)
 {
-    // Both batches go into one array in drawing order, the overlay's after
-    // the game's, so it comes out on top of every layer the game drew. The
-    // game's draw calls are counted for the overlay before the overlay's
-    // rectangles join them.
-    i32 game_count = game_batch.count;
-    i32 count = game_count + overlay_batch.count;
+    // The batches go into one array in drawing order: the game's, its boxes
+    // if they're shown, and the overlay's. Each comes out on top of every
+    // layer of the ones before it. The game's draw calls are counted for the
+    // overlay before the other rectangles join them.
     batch::sort(game_batch, sorted, sorted_textures);
-    batch::sort(overlay_batch, sorted + game_count, sorted_textures + game_count);
+    i32 count = game_batch.count;
     stats = {
-        .rects = game_count,
-        .draw_calls = batch::draw_calls(sorted_textures, game_count, calls),
+        .rects = count,
+        .draw_calls = batch::draw_calls(sorted_textures, count, calls),
     };
+    if (boxes_shown) {
+        batch::sort(box_batch, sorted + count, sorted_textures + count);
+        count += box_batch.count;
+    }
+    batch::sort(overlay_batch, sorted + count, sorted_textures + count);
+    count += overlay_batch.count;
     if (count == 0)
         return;
 
@@ -608,11 +636,11 @@ static void present_screen()
                            GL_COLOR_BUFFER_BIT, GL_NEAREST);
 }
 
-void end_frame()
+void end_frame(bool boxes_shown)
 {
     ASSERT(in_frame);
     in_frame = false;
-    draw_batches();
+    draw_batches(boxes_shown);
     present_screen();
 }
 

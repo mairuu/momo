@@ -114,6 +114,11 @@ constexpr Color NEST_HOLE_COLOR = renderer::rgb(0x141414);
 constexpr Color SHADOW_COLOR = { .r = 0, .g = 0, .b = 0, .a = 96 }; // black, partly see-through
 constexpr Color TEXT_COLOR = renderer::rgb(0xffffff);
 
+// The debug boxes' colors (chapter 19), which nothing else in the room uses:
+// red for the tiles that stop the player, and green for the player's box.
+constexpr Color SOLID_BOX_COLOR = renderer::rgb(0xff004d);
+constexpr Color PLAYER_BOX_COLOR = renderer::rgb(0x00e436);
+
 // The player's color for each power, from the NES's palette: blue, as
 // MegaMan starts, then orange, green and purple.
 constexpr Color POWER_COLORS[] = {
@@ -177,6 +182,16 @@ bool tile_is_solid(u8 tile)
     return false;
 }
 
+// The tiles that stop the player: the room's, with tile_is_solid to say which
+// ones. update_player moves the player through them, and draw_boxes shows
+// them, so what it shows is what collision checks. tile_is_solid is code in
+// game.so, so a SolidTiles is made again wherever it's needed, and never kept
+// in GameState.
+SolidTiles room_solids(const GameState* state)
+{
+    return { .map = state->room, .tile_size = TILE_SIZE, .is_solid = tile_is_solid };
+}
+
 // Moves the way the d-pad is held, until a wall stops it, and changes power.
 // Up and down move the player too, for now: chapter 20 gives it gravity and
 // a jump instead.
@@ -194,9 +209,8 @@ void update_player(GameState* state, Entity* player)
         player->vel.y += PLAYER_SPEED;
 
     // Across first, then down, each on its own, so a wall that stops one
-    // doesn't stop the other. tile_is_solid is code in game.so, so solids is
-    // filled again on every update, and never kept in GameState.
-    SolidTiles solids = { .map = state->room, .tile_size = TILE_SIZE, .is_solid = tile_is_solid };
+    // doesn't stop the other.
+    SolidTiles solids = room_solids(state);
     collision::move_x(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.x);
     collision::move_y(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.y);
 
@@ -296,15 +310,21 @@ void draw_tile(Tile tile, i32 column, i32 row)
     }
 }
 
+// The player's box, in the whole pixels it's drawn at: the box collision
+// moves through the room, from fx::floor of its position.
+Rect player_box(const Entity* player)
+{
+    return { .x = fx::floor(player->pos.x),
+             .y = fx::floor(player->pos.y),
+             .w = PLAYER_WIDTH,
+             .h = PLAYER_HEIGHT };
+}
+
 // The player, in its power's color. It walks behind the pillar, which is in
 // the foreground.
 void draw_player(const GameState* state, const Entity* player)
 {
-    Rect rect = { .x = fx::floor(player->pos.x),
-                  .y = fx::floor(player->pos.y),
-                  .w = PLAYER_WIDTH,
-                  .h = PLAYER_HEIGHT };
-    renderer::draw_rect(rect, POWER_COLORS[state->power], LAYER_ENTITIES);
+    renderer::draw_rect(player_box(player), POWER_COLORS[state->power], LAYER_ENTITIES);
 }
 
 // A dark hole with a stone rim, behind the bats that come out of it.
@@ -330,6 +350,28 @@ void draw_bat(const GameState* state, const Entity* bat)
     i32 frame = (bat->timer / 8) % 2;
     Rect source = { .x = frame * BAT_SIZE, .y = 0, .w = BAT_SIZE, .h = BAT_SIZE };
     renderer::draw_sprite(state->bat_texture, source, x, y, LAYER_ENTITIES);
+}
+
+// The debug boxes (chapter 19): what collision sees, over the picture. A box
+// for each tile that stops the player, from the same SolidTiles update_player
+// moves it through, so a tile the player walks through, such as the pillar,
+// gets none. Then the player's own box, on top.
+void draw_boxes(const GameState* state)
+{
+    SolidTiles solids = room_solids(state);
+    for (i32 row = 0; row < solids.map.rows; row++) {
+        for (i32 column = 0; column < solids.map.columns; column++) {
+            if (!solids.is_solid(tilemap::at(solids.map, column, row)))
+                continue;
+            Rect tile = { .x = column * solids.tile_size,
+                          .y = row * solids.tile_size,
+                          .w = solids.tile_size,
+                          .h = solids.tile_size };
+            renderer::debug_box(tile, SOLID_BOX_COLOR);
+        }
+    }
+    const Entity* player = pool::get(state->entities, state->player);
+    renderer::debug_box(player_box(player), PLAYER_BOX_COLOR);
 }
 
 // Once per frame: the whole picture, drawn again from the state.
@@ -371,6 +413,10 @@ void render(const GameState* state)
     if ((state->tick / 16) % 2 == 0)
         renderer::draw_text(ready, (SCREEN_WIDTH - ready.len * GLYPH_SIZE) / 2, 64, TEXT_COLOR,
                             LAYER_HUD);
+
+    // The game draws its boxes every frame, and the engine decides whether
+    // they're shown: F1, or --boxes.
+    draw_boxes(state);
 }
 
 void shutdown(GameState* state)

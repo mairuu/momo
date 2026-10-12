@@ -1,7 +1,7 @@
 // renderer.h: everything momo draws goes through here, on OpenGL 4.6.
 // Chapter 08 explains how it starts, chapter 10 how it draws, chapter 11 how
-// the picture fits the window, chapter 12 textures and text, and chapter 13
-// the overlay and reading the screen back.
+// the picture fits the window, chapter 12 textures and text, chapter 13 the
+// overlay and reading the screen back, and chapter 19 debug boxes.
 #pragma once
 
 #include "base.h"
@@ -41,6 +41,10 @@ constexpr i32 MAX_LAYERS = 8;
 // is an ASSERT.
 constexpr i32 MAX_RECTS = 4096;
 
+// The most boxes debug_box can draw in a frame, apart from MAX_RECTS. More is
+// an ASSERT, whether the boxes are shown or not.
+constexpr i32 MAX_DEBUG_BOXES = 512;
+
 // ---- Textures ---------------------------------------------------------------
 
 // A picture on the GPU that sprites are cut from, as a number the renderer
@@ -64,8 +68,8 @@ constexpr i32 GLYPH_SIZE = 8;
 // ---- Stats ------------------------------------------------------------------
 
 // What the game drew in a frame: its rectangles, sprites and letters
-// included, and the draw calls that drew them. The overlay's own aren't
-// counted.
+// included, and the draw calls that drew them. Its debug boxes and the
+// overlay's own rectangles aren't counted.
 struct RenderStats {
     i32 rects;
     i32 draw_calls;
@@ -98,6 +102,17 @@ MOMO_API void draw_sprite(Texture texture, Rect source, i32 x, i32 y, i32 layer)
 // draws any other char as '?'.
 MOMO_API void draw_text(Str text, i32 x, i32 y, Color color, i32 layer);
 
+// Draws a debug box: rect's outline, 1 pixel thick and inside it, in color,
+// over every layer the game draws and under the debug overlay. It shows what
+// the game's code sees, such as the boxes collision checks (chapter 19).
+//
+// The engine shows the boxes only while F1 or --boxes asks it to, and the
+// game never knows whether they're shown: debug_box does the same work
+// either way, so the game can't play any differently with them on. It works
+// only inside the game's render, like the rest, and its boxes aren't counted
+// in RenderStats.
+MOMO_API void debug_box(Rect rect, Color color);
+
 // An opaque color, written as hex the way color pickers write it:
 // rgb(0x8e44ad) is a purple.
 constexpr Color rgb(u32 hex)
@@ -122,15 +137,16 @@ void shutdown();
 void begin_frame();
 
 // Called after the game's render: what's drawn from here until end_frame
-// goes in the overlay's batch instead, which is drawn after the game's, over
-// all its layers. Its room is its own, apart from the game's MAX_RECTS.
+// goes in the overlay's batch instead, which is drawn after the game's and
+// its debug boxes, over all of them. Its room is its own, apart from the
+// game's MAX_RECTS.
 void begin_overlay();
 
-// Draws the frame on the screen, the game's batch and then the overlay's,
-// with one draw call per run of rectangles that share a texture, then copies
-// the screen into the window at the largest whole number scale that fits,
-// with black around it.
-void end_frame();
+// Draws the frame on the screen: the game's batch, then its debug boxes if
+// boxes_shown, then the overlay's batch, with one draw call per run of
+// rectangles that share a texture. Then copies the screen into the window at
+// the largest whole number scale that fits, with black around it.
+void end_frame(bool boxes_shown);
 
 // What the game drew in the last frame that ended.
 RenderStats last_frame_stats();

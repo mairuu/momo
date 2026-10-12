@@ -12,6 +12,7 @@ static void no_arguments_is_a_plain_run()
     Options options = {};
     CHECK(options::parse(ARRAY_COUNT(argv), argv, &options));
     CHECK(!options.overlay);
+    CHECK(!options.boxes);
     CHECK(options.capture_path == nullptr);
 }
 
@@ -21,6 +22,16 @@ static void overlay_shows_the_overlay_from_the_start()
     Options options = {};
     CHECK(options::parse(ARRAY_COUNT(argv), argv, &options));
     CHECK(options.overlay);
+    CHECK(!options.boxes);
+}
+
+static void boxes_shows_the_boxes_from_the_start()
+{
+    const char* argv[] = { "momo", "--boxes" };
+    Options options = {};
+    CHECK(options::parse(ARRAY_COUNT(argv), argv, &options));
+    CHECK(options.boxes);
+    CHECK(!options.overlay); // each one is shown on its own
 }
 
 static void capture_takes_a_tick_and_a_file()
@@ -42,10 +53,11 @@ static void capture_at_tick_0_saves_the_first_picture()
 
 static void arguments_come_in_any_order()
 {
-    const char* argv[] = { "momo", "--capture", "60", "shot.png", "--overlay" };
+    const char* argv[] = { "momo", "--boxes", "--capture", "60", "shot.png", "--overlay" };
     Options options = {};
     CHECK(options::parse(ARRAY_COUNT(argv), argv, &options));
     CHECK(options.overlay);
+    CHECK(options.boxes);
     CHECK_EQ(options.capture_tick, 60);
 }
 
@@ -89,6 +101,7 @@ int main(int argc, char** argv)
     test::init(argc, argv);
     RUN(no_arguments_is_a_plain_run);
     RUN(overlay_shows_the_overlay_from_the_start);
+    RUN(boxes_shows_the_boxes_from_the_start);
     RUN(capture_takes_a_tick_and_a_file);
     RUN(capture_at_tick_0_saves_the_first_picture);
     RUN(arguments_come_in_any_order);

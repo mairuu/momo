@@ -1,21 +1,24 @@
 // options.h: what momo was asked to do on its command line. Chapter 13
-// explains it.
+// explains it, and chapter 19 adds --boxes.
 #pragma once
 
 #include "base.h"
 
-// momo [--overlay] [--capture TICK FILE]
+// momo [--overlay] [--boxes] [--capture TICK FILE]
 //
 //   --overlay             start with the debug overlay shown. The ` key, left
 //                         of 1, shows and hides it while momo runs.
+//   --boxes               start with the game's debug boxes shown. F1 shows
+//                         and hides them while momo runs.
 //   --capture TICK FILE   run the game until it has run TICK ticks, save the
 //                         screen as a PNG file at FILE, and quit. 0 saves the
 //                         first picture, before any tick. The game gets no
 //                         input from the keys or gamepads (chapter 14).
 //
-// All zeros is a run with neither.
+// All zeros is a run with none of them.
 struct Options {
     bool overlay;
+    bool boxes;
     const char* capture_path; // null for no capture. Points into argv, which lasts the whole run.
     i32 capture_tick;
 };

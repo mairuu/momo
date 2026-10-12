@@ -6,7 +6,7 @@
 
 namespace options {
 
-constexpr const char* USAGE = "usage: momo [--overlay] [--capture TICK FILE]";
+constexpr const char* USAGE = "usage: momo [--overlay] [--boxes] [--capture TICK FILE]";
 
 // Reads text as a tick: one or more of the digits 0 to 9, and nothing else,
 // so "-1", "1e3", "12x" and "" are all refused. A number bigger than an i32
@@ -34,6 +34,8 @@ bool parse(i32 argc, const char* const* argv, Options* options)
         const char* arg = argv[i];
         if (strcmp(arg, "--overlay") == 0) {
             options->overlay = true;
+        } else if (strcmp(arg, "--boxes") == 0) {
+            options->boxes = true;
         } else if (strcmp(arg, "--capture") == 0) {
             // Two more arguments: argv[i + 1] and argv[i + 2].
             if (i + 2 >= argc) {

@@ -1,5 +1,5 @@
-// batch.cpp: the rectangles a frame draws. Chapter 10 explains it, and
-// chapter 12 adds textures.
+// batch.cpp: the rectangles a frame draws. Chapter 10 explains it, chapter
+// 12 adds textures, and chapter 19 outlines.
 #include "batch.h"
 
 namespace batch {
@@ -73,6 +73,21 @@ i32 draw_calls(const Texture* textures, i32 count, DrawCall* calls)
         }
     }
     return call_count;
+}
+
+i32 outline(Rect rect, Rect* edges)
+{
+    if (rect.w <= 0 || rect.h <= 0)
+        return 0;
+    // A box 1 or 2 pixels high has no rows between its top and its bottom.
+    i32 side_h = max(rect.h - 2, 0);
+    i32 right = rect.x + rect.w - 1;
+    i32 bottom = rect.y + rect.h - 1;
+    edges[0] = { .x = rect.x, .y = rect.y, .w = rect.w, .h = 1 };     // top
+    edges[1] = { .x = rect.x, .y = bottom, .w = rect.w, .h = 1 };     // bottom
+    edges[2] = { .x = rect.x, .y = rect.y + 1, .w = 1, .h = side_h }; // left
+    edges[3] = { .x = right, .y = rect.y + 1, .w = 1, .h = side_h };  // right
+    return 4;
 }
 
 } // namespace batch

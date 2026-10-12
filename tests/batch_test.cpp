@@ -316,6 +316,77 @@ static void a_full_batch_holds_capacity_rects()
     CHECK_EQ(out[CAPACITY - 1].rect.x, 0);
 }
 
+// How many of the count rects cover the pixel at x, y.
+static i32 covering(const Rect* rects, i32 count, i32 x, i32 y)
+{
+    i32 n = 0;
+    for (i32 i = 0; i < count; i++) {
+        Rect r = rects[i];
+        if (x >= r.x && x < r.x + r.w && y >= r.y && y < r.y + r.h)
+            n++;
+    }
+    return n;
+}
+
+// Checks rect's outline against a picture of it, with one string per row,
+// row_count of them, from the pixel at 0, 0. Each pixel is '.' if no edge
+// covers it, or how many do, as a digit.
+static void check_outline(Rect rect, const char* const* picture, i32 row_count)
+{
+    Rect edges[4] = {};
+    CHECK_EQ(batch::outline(rect, edges), 4);
+    for (i32 y = 0; y < row_count; y++) {
+        for (i32 x = 0; picture[y][x] != 0; x++) {
+            i32 expected = picture[y][x] == '.' ? 0 : picture[y][x] - '0';
+            i32 got = covering(edges, 4, x, y);
+            if (got != expected) {
+                test::fail(__FILE__, __LINE__, "pixel %d, %d is in %d edges, not %d", x, y, got,
+                           expected);
+                return;
+            }
+        }
+    }
+}
+
+static void an_outline_is_the_edge_of_its_box_inside_it()
+{
+    // A box 4 wide and 5 high, at 1, 1: every pixel along its edge is in
+    // exactly one of the four, and none outside it or in its middle.
+    const char* picture[] = {
+        "......", ".1111.", ".1..1.", ".1..1.", ".1..1.", ".1111.", "......",
+    };
+    check_outline({ .x = 1, .y = 1, .w = 4, .h = 5 }, picture, ARRAY_COUNT(picture));
+}
+
+static void a_box_1_pixel_wide_has_its_left_and_right_in_one_place()
+{
+    // Drawn opaque, a pixel drawn twice looks the same as once.
+    const char* picture[] = {
+        "...", ".1.", ".2.", ".2.", ".1.", "...",
+    };
+    check_outline({ .x = 1, .y = 1, .w = 1, .h = 4 }, picture, ARRAY_COUNT(picture));
+}
+
+static void a_box_1_pixel_high_has_its_top_and_bottom_in_one_place()
+{
+    // Its left and right are 0 high: rectangles with no pixels.
+    const char* picture[] = {
+        "......",
+        ".2222.",
+        "......",
+    };
+    check_outline({ .x = 1, .y = 1, .w = 4, .h = 1 }, picture, ARRAY_COUNT(picture));
+}
+
+static void a_box_with_no_pixels_has_no_outline()
+{
+    Rect edges[4] = {};
+    CHECK_EQ(batch::outline({ .x = 1, .y = 1, .w = 0, .h = 4 }, edges), 0);
+    CHECK_EQ(batch::outline({ .x = 1, .y = 1, .w = 4, .h = 0 }, edges), 0);
+    CHECK_EQ(batch::outline({ .x = 1, .y = 1, .w = -4, .h = 4 }, edges), 0);
+    CHECK_EQ(edges[0].w, 0); // untouched
+}
+
 int main(int argc, char** argv)
 {
     test::init(argc, argv);
@@ -333,5 +404,9 @@ int main(int argc, char** argv)
     RUN(one_texture_is_one_draw_call);
     RUN(a_texture_used_again_later_starts_another_draw_call);
     RUN(the_frame_from_chapter_12);
+    RUN(an_outline_is_the_edge_of_its_box_inside_it);
+    RUN(a_box_1_pixel_wide_has_its_left_and_right_in_one_place);
+    RUN(a_box_1_pixel_high_has_its_top_and_bottom_in_one_place);
+    RUN(a_box_with_no_pixels_has_no_outline);
     return test::report();
 }

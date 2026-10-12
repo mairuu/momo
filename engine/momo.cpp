@@ -1,7 +1,8 @@
 // momo.cpp: the engine's entry point. It reserves memory, loads game.so,
 // opens the window, runs the loop, and reloads game.so whenever it changes.
 // It also draws the debug overlay and saves captures (chapter 13), and hands
-// each tick the pad (chapter 14). It reads files for the game (chapter 17).
+// each tick the pad (chapter 14). It reads files for the game (chapter 17),
+// and shows or hides the game's debug boxes (chapter 19).
 #include "momo.h"
 #include "input.h"
 #include "options.h"
@@ -47,6 +48,9 @@ struct Engine {
     // The debug overlay (chapter 13): whether it's shown, and its numbers.
     bool overlay_shown;
     FrameStats stats;
+
+    // Whether the game's debug boxes are shown (chapter 19).
+    bool boxes_shown;
 
     u8* memory; // one block from the OS, split into the four arenas
     i64 memory_size;
@@ -326,6 +330,7 @@ i32 run(i32 argc, char** argv)
     if (!options::parse(argc, argv, &engine.options))
         return 1;
     engine.overlay_shown = engine.options.overlay;
+    engine.boxes_shown = engine.options.boxes;
     if (!init_memory())
         return 1;
     if (!find_game())
@@ -352,6 +357,8 @@ i32 run(i32 argc, char** argv)
             break; // the window was closed, or Ctrl+C
         if (events.backquote_pressed)
             engine.overlay_shown = !engine.overlay_shown;
+        if (events.f1_pressed)
+            engine.boxes_shown = !engine.boxes_shown;
         if (engine.options.capture_path)
             engine.pad = {}; // a capture takes no input, so every run saves the same picture
         reload_game_if_changed();
@@ -378,14 +385,15 @@ i32 run(i32 argc, char** argv)
         }
         engine.tick_count += ticks;
 
-        // The game draws its picture of where the ticks left it, and the
+        // The game draws its picture of where the ticks left it, and its
+        // debug boxes, which reach the screen only if they're shown. The
         // overlay goes on top.
         renderer::begin_frame();
         if (engine.game_lib)
             engine.game.render(engine.state);
         if (engine.overlay_shown)
             draw_overlay();
-        renderer::end_frame();
+        renderer::end_frame(engine.boxes_shown);
         if (engine.options.capture_path && engine.tick_count == engine.options.capture_tick)
             save_capture();
 
