@@ -1,6 +1,7 @@
 // game.cpp: the game. For now it's one room, read from assets/room.txt, with
-// two nests that let out bats, one at a time each, and a player who walks
-// where the pad says and changes power. Each of them is an entity.
+// two nests that let out bats, one at a time each, and a player who moves
+// where the pad says, stops at the room's walls and changes power. Each of
+// them is an entity.
 #include "momo.h"
 
 // Bump this by hand whenever GameState changes in a way that keeps its size:
@@ -89,9 +90,10 @@ constexpr Button NEXT_POWER_BUTTON = BUTTON_R;
 
 constexpr i32 TILE_SIZE = 16; // pixels: a screen is 16 tiles by 15
 
-// Where the player stands and the bats' shadows fall: the top of room.txt's
-// floor, two rows of tiles high. Nothing reads the room's tiles but render
-// yet, so a floor moved in room.txt leaves the player standing here.
+// Where the player starts and the bats' shadows fall: the top of room.txt's
+// floor, two rows of tiles high. The player stops at the floor's tiles
+// (chapter 18), but these two don't read them, so a floor moved in room.txt
+// leaves the player starting here and the shadows falling here.
 constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE;
 
 // MegaMan's walking speed in MegaMan 1 and 2: 1 pixel and 96/256 a tick.
@@ -156,14 +158,50 @@ void init(GameState* state)
 
 // ---- Update -----------------------------------------------------------------
 
-// Walks while the d-pad is held left or right, and changes power.
+// Whether a tile stops the player (chapter 18). A switch with no default, as
+// in draw_tile, so a tile added to enum Tile and left out here is a warning
+// (-Wswitch), and every new tile decides.
+bool tile_is_solid(u8 tile)
+{
+    switch ((Tile)tile) {
+    case TILE_EMPTY:
+        return false;
+    case TILE_WALL:
+        return true;
+    case TILE_PILLAR:
+        return false; // it's in the foreground, and the player walks behind it
+    case TILE_COUNT:
+        break;
+    }
+    ASSERT(!"not a tile");
+    return false;
+}
+
+// Moves the way the d-pad is held, until a wall stops it, and changes power.
+// Up and down move the player too, for now: chapter 20 gives it gravity and
+// a jump instead.
 void update_player(GameState* state, Entity* player)
 {
     // Both directions at once cancel out.
+    player->vel = {};
     if (input::down(BUTTON_LEFT))
-        player->pos.x -= PLAYER_SPEED;
+        player->vel.x -= PLAYER_SPEED;
     if (input::down(BUTTON_RIGHT))
-        player->pos.x += PLAYER_SPEED;
+        player->vel.x += PLAYER_SPEED;
+    if (input::down(BUTTON_UP))
+        player->vel.y -= PLAYER_SPEED;
+    if (input::down(BUTTON_DOWN))
+        player->vel.y += PLAYER_SPEED;
+
+    // Across first, then down, each on its own, so a wall that stops one
+    // doesn't stop the other. tile_is_solid is code in game.so, so solids is
+    // filled again on every update, and never kept in GameState.
+    SolidTiles solids = { .map = state->room, .tile_size = TILE_SIZE, .is_solid = tile_is_solid };
+    collision::move_x(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.x);
+    collision::move_y(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.y);
+
+    // The room's rows 3 to 12 are open at both sides, and outside the map
+    // is empty tiles, so the screen's edges stop the player there.
     player->pos.x =
         clamp(player->pos.x, fx::from_int(0), fx::from_int(SCREEN_WIDTH - PLAYER_WIDTH));
 
@@ -258,8 +296,8 @@ void draw_tile(Tile tile, i32 column, i32 row)
     }
 }
 
-// The player, standing on the floor, in its power's color. It walks behind
-// the pillar, which is in the foreground.
+// The player, in its power's color. It walks behind the pillar, which is in
+// the foreground.
 void draw_player(const GameState* state, const Entity* player)
 {
     Rect rect = { .x = fx::floor(player->pos.x),
@@ -338,8 +376,9 @@ void render(const GameState* state)
 void shutdown(GameState* state)
 {
     const Entity* player = pool::get(state->entities, state->player);
-    LOG_INFO("shutdown, with %d entities, the player at x = %g, power %d", state->entities.count,
-             fx::to_double(player->pos.x), state->power);
+    LOG_INFO("shutdown, with %d entities, the player at x = %g, y = %g, power %d",
+             state->entities.count, fx::to_double(player->pos.x), fx::to_double(player->pos.y),
+             state->power);
 }
 
 } // namespace game

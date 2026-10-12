@@ -21,15 +21,6 @@
 constexpr i32 SCREEN_WIDTH = 256;
 constexpr i32 SCREEN_HEIGHT = 240;
 
-// A rectangle on the screen, in whole pixels: its top left corner, and its
-// size.
-struct Rect {
-    i32 x;
-    i32 y;
-    i32 w;
-    i32 h;
-};
-
 // Red, green, blue and alpha, from 0 to 255. Alpha is how much the color
 // covers what's behind it: 255 hides it, 0 leaves it as it was, so a zeroed
 // Color draws nothing.

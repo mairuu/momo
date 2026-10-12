@@ -98,3 +98,15 @@ T clamp(T x, T lo, T hi)
         return hi;
     return x;
 }
+
+// ---- Rectangles -----------------------------------------------------------
+
+// A rectangle in whole pixels: its top left corner, and its size. The
+// renderer draws them (chapter 10), and collision checks them against the
+// tiles (chapter 18), so it lives here, where both find it.
+struct Rect {
+    i32 x;
+    i32 y;
+    i32 w;
+    i32 h;
+};

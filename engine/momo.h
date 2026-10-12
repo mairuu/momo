@@ -6,6 +6,7 @@
 
 #include "base.h"
 #include "arena.h"
+#include "collision.h"
 #include "fx.h"
 #include "input.h"
 #include "logger.h"
