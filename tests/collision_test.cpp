@@ -154,6 +154,23 @@ static void a_hit_drops_the_fraction()
     CHECK_EQ(pos.x.raw, fx::from_int(32).raw);
 }
 
+static void a_move_within_a_pixel_checks_nothing()
+{
+    // A box standing on a floor at y 48, pulled down 0.25, 0.5 and 0.75, as
+    // gravity pulls a player who stands still (chapter 20). The first two
+    // moves leave the box drawn at 32, so no tile is checked, and they aren't
+    // hits, though the floor is right under the box. The third would draw it
+    // at 33, in the floor.
+    SolidTiles solids = solid_tiles(STR(".\n.\n.\n#\n"), 16);
+    Fx2 pos = at(0, 32);
+    CHECK(!collision::move_y(solids, &pos, 16, 16, fx::from_double(0.25)));
+    CHECK_EQ(pos.y.raw, fx::from_double(32.25).raw);
+    CHECK(!collision::move_y(solids, &pos, 16, 16, fx::from_double(0.5)));
+    CHECK_EQ(pos.y.raw, fx::from_double(32.75).raw);
+    CHECK(collision::move_y(solids, &pos, 16, 16, fx::from_double(0.75)));
+    CHECK_EQ(pos.y.raw, fx::from_int(32).raw);
+}
+
 static void never_overlaps_at_walking_speed()
 {
     // MegaMan's 1.375 pixels a tick, into a wall, for 40 ticks.
@@ -247,6 +264,7 @@ int main(int argc, char** argv)
     RUN(stops_flush_against_a_wall_on_the_left);
     RUN(stops_flush_on_the_floor_and_under_the_ceiling);
     RUN(a_hit_drops_the_fraction);
+    RUN(a_move_within_a_pixel_checks_nothing);
     RUN(never_overlaps_at_walking_speed);
     RUN(cant_go_through_a_wall_however_fast);
     RUN(stops_flush_left_of_the_map);

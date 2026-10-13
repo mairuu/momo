@@ -34,7 +34,7 @@ Like the plan, the outline is append-only. When a chapter changes what a planned
 - 17 Text Tilemaps. *Changed in ch17:* also gives the game `momo::read_file`, its first way to read a file that isn't a picture.
 - 18 Collision: pixel-by-pixel stepping (Actor/Solid), with tests. *Changed in ch18:* tiles are the only solids, and moving platforms wait for a stage that needs one. Also moves the player up and down, until chapter 20 gives it gravity.
 - 19 Debug Drawing: hitboxes, collision tiles. *Changed in ch19:* the player's collision box and the tiles that stop it, and hitboxes and hurtboxes get theirs in chapter 25. Also gives the engine F1 and `--boxes`.
-- 20 Run and Jump: variable-height jump, gravity, maximum fall speed
+- 20 Run and Jump: variable-height jump, gravity, maximum fall speed. *Changed in ch20:* MegaMan 1 and 2's numbers, with MegaMan 3 and 4's fastest fall. Also gives the room a ledge and starts the player in the air. Up and down do nothing until chapter 22's ladders.
 - 21 Pause, Step, Record, Loop. *Changed in ch07:* also decides whether losing focus pauses the game ([plan §4.4](plan.md#44-platform-and-input)), since a paused game can't keep looping while you edit its code in another window.
 - 22 Ladders and Spikes: tile types, climbing, death and respawn
 

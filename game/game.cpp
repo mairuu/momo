@@ -1,7 +1,7 @@
 // game.cpp: the game. For now it's one room, read from assets/room.txt, with
-// two nests that let out bats, one at a time each, and a player who moves
-// where the pad says, stops at the room's walls and changes power. Each of
-// them is an entity.
+// two nests that let out bats, one at a time each, and a player who runs,
+// jumps, falls, stops at the room's tiles and changes power. Each of them is
+// an entity.
 #include "momo.h"
 
 // Bump this by hand whenever GameState changes in a way that keeps its size:
@@ -83,22 +83,38 @@ enum Layer : u8 {
 static_assert(LAYER_COUNT <= MAX_LAYERS, "the renderer draws at most MAX_LAYERS layers");
 
 // What the pad's buttons do in this game. The engine names them for where
-// they are on the pad, and the game decides what they mean (chapter 14). The
-// d-pad's directions mean what they say.
+// they are on the pad, and the game decides what they mean (chapter 14). Left
+// and right on the d-pad walk, and up and down do nothing yet.
+constexpr Button JUMP_BUTTON = BUTTON_A;
 constexpr Button PREVIOUS_POWER_BUTTON = BUTTON_L;
 constexpr Button NEXT_POWER_BUTTON = BUTTON_R;
 
 constexpr i32 TILE_SIZE = 16; // pixels: a screen is 16 tiles by 15
 
-// Where the player starts and the bats' shadows fall: the top of room.txt's
-// floor, two rows of tiles high. The player stops at the floor's tiles
-// (chapter 18), but these two don't read them, so a floor moved in room.txt
-// leaves the player starting here and the shadows falling here.
+// Where the bats' shadows fall: the top of room.txt's floor, two rows of
+// tiles high. It doesn't read the room, so a floor moved in room.txt leaves
+// the shadows falling here.
 constexpr i32 FLOOR_Y = SCREEN_HEIGHT - 2 * TILE_SIZE;
 
-// MegaMan's walking speed in MegaMan 1 and 2: 1 pixel and 96/256 a tick.
-constexpr Fx PLAYER_SPEED = fx::from_double(1.375); // pixels per tick
+// How MegaMan moves in MegaMan 1 and 2, in pixels per tick, and in 256ths of
+// a pixel where there's a fraction. y grows downward, so a rise is a minus
+// speed, and gravity is a plus.
+constexpr Fx PLAYER_SPEED = fx::from_double(1.375);      // walking: 1 and 96/256
+constexpr Fx PLAYER_AIR_SPEED = fx::from_double(1.3125); // across, in the air: 1 and 80/256
+constexpr Fx GRAVITY = fx::from_double(0.25);            // more down, every tick: 64/256
+constexpr Fx JUMP_SPEED = fx::from_double(4.87109375);   // up, as a jump starts: 4 and 223/256
+// Letting go of the jump button while rising faster than JUMP_CUT_ABOVE slows
+// the rise to JUMP_CUT_SPEED at once, so a short press is a low jump.
+constexpr Fx JUMP_CUT_ABOVE = fx::from_double(2.12109375); // 2 and 31/256
+constexpr Fx JUMP_CUT_SPEED = fx::from_int(1);
+// The fastest fall. This is MegaMan 3 and 4's: 1 and 2's is 12, which only a
+// fall of more than a screen reaches.
+constexpr Fx MAX_FALL_SPEED = fx::from_int(7);
+
+// The player starts up by the ceiling, in a gap in the room's top rows, and
+// falls to the floor.
 constexpr i32 PLAYER_START_X = 48;
+constexpr i32 PLAYER_START_Y = 16;
 constexpr i32 PLAYER_WIDTH = 16;
 constexpr i32 PLAYER_HEIGHT = 24;
 
@@ -144,10 +160,10 @@ void init(GameState* state)
 
     // The engine hands over a zeroed GameState, so the pool starts empty, and
     // the player goes into slot 0.
-    state->player = pool::add(&state->entities,
-                              { .kind = ENTITY_PLAYER,
-                                .pos = { .x = fx::from_int(PLAYER_START_X),
-                                         .y = fx::from_int(FLOOR_Y - PLAYER_HEIGHT) } });
+    state->player = pool::add(
+        &state->entities,
+        { .kind = ENTITY_PLAYER,
+          .pos = { .x = fx::from_int(PLAYER_START_X), .y = fx::from_int(PLAYER_START_Y) } });
 
     // A nest on each side of the screen. The left one's bats fly right, and
     // the right one's fly left, faster.
@@ -192,27 +208,55 @@ SolidTiles room_solids(const GameState* state)
     return { .map = state->room, .tile_size = TILE_SIZE, .is_solid = tile_is_solid };
 }
 
-// Moves the way the d-pad is held, until a wall stops it, and changes power.
-// Up and down move the player too, for now: chapter 20 gives it gravity and
-// a jump instead.
+// Whether the player stands on a tile that stops it: whether the row of
+// pixels just under its feet overlaps one. It's worked out again every tick,
+// from where the player is drawn, and never kept.
+bool on_ground(const SolidTiles& solids, const Entity* player)
+{
+    Rect under_feet = { .x = fx::floor(player->pos.x),
+                        .y = fx::floor(player->pos.y) + PLAYER_HEIGHT,
+                        .w = PLAYER_WIDTH,
+                        .h = 1 };
+    return collision::overlaps(solids, under_feet);
+}
+
+// Walks the way the d-pad is held, jumps, falls, stops at the room's walls,
+// floors and ceilings, and changes power.
 void update_player(GameState* state, Entity* player)
 {
-    // Both directions at once cancel out.
-    player->vel = {};
+    SolidTiles solids = room_solids(state);
+    bool standing = on_ground(solids, player);
+
+    // Across: a little slower in the air than on the ground, and both
+    // directions at once cancel out.
+    Fx speed = standing ? PLAYER_SPEED : PLAYER_AIR_SPEED;
+    player->vel.x = {};
     if (input::down(BUTTON_LEFT))
-        player->vel.x -= PLAYER_SPEED;
+        player->vel.x -= speed;
     if (input::down(BUTTON_RIGHT))
-        player->vel.x += PLAYER_SPEED;
-    if (input::down(BUTTON_UP))
-        player->vel.y -= PLAYER_SPEED;
-    if (input::down(BUTTON_DOWN))
-        player->vel.y += PLAYER_SPEED;
+        player->vel.x += speed;
+
+    // Down: vel.y is kept from one tick to the next, and gravity adds to it
+    // every tick, up to the fastest fall. It pulls a standing player too,
+    // into the floor, which stops it.
+    player->vel.y = min(player->vel.y + GRAVITY, MAX_FALL_SPEED);
+
+    // A jump starts only from the ground, on the tick the button goes down.
+    // It replaces that tick's gravity, so the jump's first tick rises the
+    // whole JUMP_SPEED. Letting go while still rising fast cuts the jump
+    // short, so a button pressed and let go on one tick is the lowest jump.
+    if (standing && input::pressed(JUMP_BUTTON))
+        player->vel.y = -JUMP_SPEED;
+    if (input::released(JUMP_BUTTON) && player->vel.y < -JUMP_CUT_ABOVE)
+        player->vel.y = -JUMP_CUT_SPEED;
 
     // Across first, then down, each on its own, so a wall that stops one
-    // doesn't stop the other.
-    SolidTiles solids = room_solids(state);
+    // doesn't stop the other. A floor that stops the player lands it, and a
+    // ceiling bumps its head: either way, it stops moving down or up, and
+    // gravity starts again from 0.
     collision::move_x(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.x);
-    collision::move_y(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.y);
+    if (collision::move_y(solids, &player->pos, PLAYER_WIDTH, PLAYER_HEIGHT, player->vel.y))
+        player->vel.y = {};
 
     // The room's rows 3 to 12 are open at both sides, and outside the map
     // is empty tiles, so the screen's edges stop the player there.
